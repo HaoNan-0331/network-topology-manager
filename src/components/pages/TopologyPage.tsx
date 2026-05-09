@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNodesState, useEdgesState, addEdge, type Connection } from 'reactflow'
 import { Button, message } from 'antd'
-import { PlusOutlined } from '@ant-design/icons'
+import { PlusOutlined, SearchOutlined } from '@ant-design/icons'
 import TopologyCanvas from '@/components/topology/TopologyCanvas'
 import TopologyToolbar from '@/components/topology/TopologyToolbar'
 import AddDeviceModal from '@/components/topology/AddDeviceModal'
-import type { TopologyNode, TopologyNodeData, TopologyEdgeData } from '@/types/topology'
+import DiscoveryPanel from '@/components/topology/DiscoveryPanel'
+import type { TopologyNode, TopologyNodeData, TopologyEdgeData, TopologyEdge } from '@/types/topology'
 import type { ConnectionType } from '@/types/device'
 
 export default function TopologyPage() {
@@ -14,6 +15,7 @@ export default function TopologyPage() {
   const [nodes, setNodes, onNodesChange] = useNodesState<TopologyNodeData>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<TopologyEdgeData>([])
   const [addDeviceOpen, setAddDeviceOpen] = useState(false)
+  const [discoveryOpen, setDiscoveryOpen] = useState(false)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isLoadingRef = useRef(false)
 
@@ -142,6 +144,34 @@ export default function TopologyPage() {
     setAddDeviceOpen(false)
   }, [setNodes])
 
+  const handleDiscoveryConfirm = useCallback(
+    (discoveredNodes: TopologyNode[], discoveredEdges: TopologyEdge[]) => {
+      // Merge discovered nodes (skip duplicates by deviceId)
+      const existingIds = new Set(nodes.map((n) => n.data.deviceId))
+      const newNodes = discoveredNodes.filter((n) => !existingIds.has(n.data.deviceId))
+      setNodes((nds) => [...nds, ...newNodes])
+
+      // Merge discovered edges (skip duplicates by source+target)
+      const existingEdgeKeys = new Set(
+        edges.map((e) => `${e.source}->${e.target}`)
+      )
+      const newEdges = discoveredEdges.filter(
+        (e) => !existingEdgeKeys.has(`${e.source}->${e.target}`)
+      )
+      setEdges((eds) => [...eds, ...newEdges])
+
+      setDiscoveryOpen(false)
+      if (newNodes.length > 0 || newEdges.length > 0) {
+        message.success(
+          `导入 ${newNodes.length} 个节点、${newEdges.length} 条连线`
+        )
+      } else {
+        message.info('所有节点和连线已存在，无需导入')
+      }
+    },
+    [nodes, edges, setNodes, setEdges]
+  )
+
   const handleNodeDoubleClick = useCallback(async (_nodeId: string, data: TopologyNodeData) => {
     try {
       const connType: ConnectionType = data.connectionType || 'ssh'
@@ -184,14 +214,24 @@ export default function TopologyPage() {
           onNodeDoubleClick={handleNodeDoubleClick}
         />
         {currentTopologyId && (
-          <Button
-            type="primary"
-            shape="circle"
-            icon={<PlusOutlined />}
-            size="large"
-            style={{ position: 'absolute', bottom: 24, right: 24, zIndex: 10 }}
-            onClick={() => setAddDeviceOpen(true)}
-          />
+          <>
+            <Button
+              shape="circle"
+              icon={<SearchOutlined />}
+              size="large"
+              style={{ position: 'absolute', bottom: 24, right: 80, zIndex: 10 }}
+              onClick={() => setDiscoveryOpen(true)}
+              title="拓扑发现"
+            />
+            <Button
+              type="primary"
+              shape="circle"
+              icon={<PlusOutlined />}
+              size="large"
+              style={{ position: 'absolute', bottom: 24, right: 24, zIndex: 10 }}
+              onClick={() => setAddDeviceOpen(true)}
+            />
+          </>
         )}
       </div>
       <AddDeviceModal
@@ -199,6 +239,11 @@ export default function TopologyPage() {
         existingNodes={nodes}
         onConfirm={handleAddDevices}
         onCancel={() => setAddDeviceOpen(false)}
+      />
+      <DiscoveryPanel
+        open={discoveryOpen}
+        onCancel={() => setDiscoveryOpen(false)}
+        onConfirm={handleDiscoveryConfirm}
       />
     </div>
   )

@@ -57,7 +57,7 @@ export interface ElectronAPI {
   }
   ai: {
     chat: (messages: Array<{ role: string; content: string }>, deviceId?: string) => Promise<string>
-    discoverTopology: (deviceIds: string[]) => Promise<{ nodes: any[]; edges: any[] }>
+    discoverTopology: (deviceIds: string[]) => Promise<{ nodes: any[]; edges: any[]; failedDevices: Array<{ deviceId: string; deviceName: string; error: string }> }>
     getConfig: () => Promise<AIConfig | null>
     saveConfig: (config: AIConfig) => Promise<void>
     getCommandWhitelist: () => Promise<string[]>

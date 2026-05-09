@@ -148,7 +148,7 @@ function saveChatMessage(
 
 // ---------- AI API call ----------
 
-async function callAI(
+export async function callAI(
   config: Record<string, string>,
   messages: Array<{ role: string; content: string }>
 ): Promise<string> {
@@ -173,7 +173,7 @@ async function callAI(
 
 // ---------- SSH execution ----------
 
-function executeCommandOnDevice(
+export function executeCommandOnDevice(
   device: any,
   command: string
 ): Promise<string> {
@@ -235,7 +235,7 @@ function executeCommandOnDevice(
 
 // ---------- Device query helper ----------
 
-function getDeviceByIdInternal(id: string): any {
+export function getDeviceByIdInternal(id: string): any {
   const row = getDatabase()
     .prepare('SELECT * FROM devices WHERE id = ?')
     .get(id) as any

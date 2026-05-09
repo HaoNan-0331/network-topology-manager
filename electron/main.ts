@@ -8,6 +8,7 @@ import { setDeviceMasterKey, listDevices, createDevice, updateDevice, deleteDevi
 import { setTopologyMasterKey, listTopologies, getTopologyById, createTopology, updateTopology, deleteTopology, exportTopology, importTopology } from './services/topology'
 import { setConnectionMasterKey, openTerminal, openWebSafe, writeToSession, writeByWebContentsId, disconnectSession } from './services/connection'
 import { setAiMasterKey, chat, getAiConfigMasked, saveAiConfig, getCommandWhitelist, saveCommandWhitelist, getExecMode, setExecMode, confirmCommand, getAiLogs, getChatHistory } from './services/ai'
+import { discoverTopology } from './services/discovery'
 
 let mainWindow: BrowserWindow | null = null
 let masterKey: string
@@ -86,6 +87,7 @@ app.whenReady().then(() => {
   ipcMain.handle('ai:confirmCommand', (_e, execId, approved) => confirmCommand(execId, approved))
   ipcMain.handle('ai:getLogs', (_e, limit) => getAiLogs(limit))
   ipcMain.handle('ai:getChatHistory', () => getChatHistory())
+  ipcMain.handle('ai:discoverTopology', (_e, deviceIds) => discoverTopology(deviceIds))
 
   createWindow()
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
