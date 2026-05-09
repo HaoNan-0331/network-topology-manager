@@ -1,0 +1,40 @@
+export type ConnectionType = 'ssh' | 'telnet' | 'web'
+export type DeviceType = 'router' | 'switch' | 'firewall' | 'server' | 'generic'
+
+export interface Device {
+  id: string
+  topologyId: string | null
+  name: string
+  vendor: string
+  model: string
+  version: string
+  ipAddress: string
+  deviceType: DeviceType
+  connectionType: ConnectionType
+  port: number | null
+  username: string
+  password: string
+  sshKeyPath: string
+  sshKeyContent: string
+  webUrl: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CreateDeviceDTO {
+  name: string
+  vendor?: string
+  model?: string
+  version?: string
+  ipAddress: string
+  deviceType?: DeviceType
+  connectionType: ConnectionType
+  port?: number
+  username?: string
+  password?: string
+  sshKeyPath?: string
+  sshKeyContent?: string
+  webUrl?: string
+}
+
+export type UpdateDeviceDTO = Partial<CreateDeviceDTO>
