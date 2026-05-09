@@ -8,7 +8,7 @@ import ReactFlow, {
   type OnEdgesChange,
   BackgroundVariant,
 } from 'reactflow'
-import type { TopologyNode, TopologyEdge } from '@/types/topology'
+import type { TopologyNode, TopologyEdge, TopologyNodeData } from '@/types/topology'
 import DeviceNode from './DeviceNode'
 import EdgeWithInterfaces from './EdgeWithInterfaces'
 import ConnectionModal from './ConnectionModal'
@@ -22,6 +22,7 @@ interface TopologyCanvasProps {
   onNodesChange: OnNodesChange
   onEdgesChange: OnEdgesChange
   onConnect?: (connection: Connection, sourceInterface: string, targetInterface: string) => void
+  onNodeDoubleClick?: (nodeId: string, data: TopologyNodeData) => void
 }
 
 export default function TopologyCanvas({
@@ -30,6 +31,7 @@ export default function TopologyCanvas({
   onNodesChange,
   onEdgesChange,
   onConnect,
+  onNodeDoubleClick,
 }: TopologyCanvasProps) {
   const [modalOpen, setModalOpen] = useState(false)
   const pendingConnection = useRef<Connection | null>(null)
@@ -66,6 +68,9 @@ export default function TopologyCanvas({
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={handleConnect}
+        onNodeDoubleClick={(_event, node) => {
+          onNodeDoubleClick?.(node.id, node.data)
+        }}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         fitView

@@ -1,10 +1,11 @@
 import { Node, Edge } from 'reactflow'
-import { DeviceType } from './device'
+import { DeviceType, ConnectionType } from './device'
 
 export interface TopologyNodeData {
   deviceId: string
   deviceName: string
   deviceType: DeviceType
+  connectionType: ConnectionType
   ipAddress: string
 }
 

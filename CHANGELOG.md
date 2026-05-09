@@ -2,6 +2,19 @@
 
 ## 2026-05-09
 
+### Task 11: 设备连接（独立弹窗终端+SSH Key）
+- 新增 `electron/services/connection.ts`：连接服务（SSH/Telnet连接管理、终端窗口创建、SSH Key认证优先）
+- 新增 `electron/terminal-preload.ts`：终端弹窗预加载脚本（terminalApi 桥接）
+- 新增 `terminal.html`：终端弹窗 HTML 入口
+- 新增 `src/terminal-main.tsx`：终端窗口独立 React 入口
+- 新增 `src/components/TerminalWindow.tsx`：xterm.js 终端组件
+- 修改 `electron/main.ts`：注册连接 IPC 处理器和终端窗口 IPC
+- 修改 `src/types/topology.ts`：TopologyNodeData 增加 connectionType 字段
+- 修改 `src/types/electron.d.ts`：增加 TerminalAPI 类型声明
+- 修改 `src/components/topology/TopologyCanvas.tsx`：增加 onNodeDoubleClick 属性
+- 修改 `src/components/topology/AddDeviceModal.tsx`：节点数据包含 connectionType
+- 修改 `src/components/pages/TopologyPage.tsx`：双击设备节点触发连接（SSH/Telnet/Web）
+
 ### Task 10: 拓扑管理页面（含导入导出）
 - 新增 `electron/services/topology.ts`：拓扑 CRUD 服务（名称/数据加密，导入导出）
 - 新增 `src/components/topology/TopologyToolbar.tsx`：工具栏（选择拓扑/新建/保存/删除/导入/导出）

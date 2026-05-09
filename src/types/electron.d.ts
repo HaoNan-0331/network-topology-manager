@@ -70,8 +70,14 @@ export interface ElectronAPI {
   }
 }
 
+export interface TerminalAPI {
+  onData: (cb: (data: string) => void) => void
+  write: (data: string) => Promise<void>
+}
+
 declare global {
   interface Window {
     api: ElectronAPI
+    terminalApi: TerminalAPI
   }
 }

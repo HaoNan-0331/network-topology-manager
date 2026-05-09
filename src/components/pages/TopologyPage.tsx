@@ -6,6 +6,7 @@ import TopologyCanvas from '@/components/topology/TopologyCanvas'
 import TopologyToolbar from '@/components/topology/TopologyToolbar'
 import AddDeviceModal from '@/components/topology/AddDeviceModal'
 import type { TopologyNode, TopologyNodeData, TopologyEdgeData } from '@/types/topology'
+import type { ConnectionType } from '@/types/device'
 
 export default function TopologyPage() {
   const [topologies, setTopologies] = useState<any[]>([])
@@ -141,6 +142,26 @@ export default function TopologyPage() {
     setAddDeviceOpen(false)
   }, [setNodes])
 
+  const handleNodeDoubleClick = useCallback(async (_nodeId: string, data: TopologyNodeData) => {
+    try {
+      const connType: ConnectionType = data.connectionType || 'ssh'
+      if (connType === 'web') {
+        const device = await window.api.device.getById(data.deviceId)
+        if (device?.webUrl) {
+          await window.api.connection.openWeb(device.webUrl)
+        } else {
+          message.warning('该设备未配置 Web 地址')
+        }
+      } else if (connType === 'telnet') {
+        await window.api.connection.telnetConnect(data.deviceId)
+      } else {
+        await window.api.connection.sshConnect(data.deviceId)
+      }
+    } catch {
+      message.error('连接失败')
+    }
+  }, [])
+
   return (
     <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
       <TopologyToolbar
@@ -160,6 +181,7 @@ export default function TopologyPage() {
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={handleConnect}
+          onNodeDoubleClick={handleNodeDoubleClick}
         />
         {currentTopologyId && (
           <Button

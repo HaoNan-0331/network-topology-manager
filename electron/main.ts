@@ -6,6 +6,7 @@ import { getOrCreateMasterKey } from './utils/keyManager'
 import { generateCaptcha, login, isFirstRun, initAdmin } from './services/auth'
 import { setDeviceMasterKey, listDevices, createDevice, updateDevice, deleteDevice, getDeviceById } from './services/device'
 import { setTopologyMasterKey, listTopologies, getTopologyById, createTopology, updateTopology, deleteTopology, exportTopology, importTopology } from './services/topology'
+import { setConnectionMasterKey, openTerminal, writeToSession, writeByWebContentsId, disconnectSession } from './services/connection'
 
 let mainWindow: BrowserWindow | null = null
 let masterKey: string
@@ -36,6 +37,7 @@ app.whenReady().then(() => {
   masterKey = getOrCreateMasterKey()
   setDeviceMasterKey(masterKey)
   setTopologyMasterKey(masterKey)
+  setConnectionMasterKey(masterKey)
   initDatabase()
   createTables()
 
@@ -60,6 +62,16 @@ app.whenReady().then(() => {
   ipcMain.handle('topology:delete', (_e, id) => deleteTopology(id))
   ipcMain.handle('topology:exportJson', (_e, id) => exportTopology(id))
   ipcMain.handle('topology:importJson', (_e, data) => importTopology(data))
+
+  // Connection IPC
+  ipcMain.handle('connection:ssh', (_e, deviceId) => openTerminal(deviceId, mainWindow!))
+  ipcMain.handle('connection:telnet', (_e, deviceId) => openTerminal(deviceId, mainWindow!))
+  ipcMain.handle('connection:openWeb', (_e, url) => shell.openExternal(url))
+  ipcMain.handle('connection:disconnect', (_e, sessionId) => disconnectSession(sessionId))
+  ipcMain.handle('connection:write', (_e, sessionId, data) => writeToSession(sessionId, data))
+
+  // Terminal window IPC (from popup terminal windows)
+  ipcMain.handle('terminal:write', (e, data) => writeByWebContentsId(e.sender.id, data))
 
   createWindow()
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
