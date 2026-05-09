@@ -33,13 +33,12 @@ export function setConnectionMasterKey(key: string) {
   setDeviceMasterKey(key)
 }
 
-export function openTerminal(deviceId: string, mainWindow: BrowserWindow): { sessionId: string } {
-  void mainWindow
+export function openTerminal(deviceId: string): { sessionId: string } {
   const device = getDeviceById(deviceId) as DeviceInfo | null
   if (!device) throw new Error('设备不存在')
 
   if (device.connectionType === 'web') {
-    if (device.webUrl) shell.openExternal(device.webUrl)
+    if (device.webUrl) openWebSafe(device.webUrl)
     return { sessionId: '' }
   }
 
@@ -58,12 +57,6 @@ export function openTerminal(deviceId: string, mainWindow: BrowserWindow): { ses
 
   termWin.setMenu(null)
 
-  if (process.env.NODE_ENV === 'development') {
-    termWin.loadURL('http://localhost:5173/terminal.html')
-  } else {
-    termWin.loadFile(path.join(__dirname, '../dist/terminal.html'))
-  }
-
   const webContentsId = termWin.webContents.id
   windowSessionMap.set(webContentsId, sessionId)
 
@@ -72,13 +65,34 @@ export function openTerminal(deviceId: string, mainWindow: BrowserWindow): { ses
     disconnectSession(sessionId)
   })
 
-  if (device.connectionType === 'ssh') {
-    connectSSH(sessionId, device, termWin)
-  } else if (device.connectionType === 'telnet') {
-    connectTelnet(sessionId, device, termWin)
+  // Wait for window to finish loading before starting connection
+  termWin.webContents.on('did-finish-load', () => {
+    if (device.connectionType === 'ssh') {
+      connectSSH(sessionId, device, termWin)
+    } else if (device.connectionType === 'telnet') {
+      connectTelnet(sessionId, device, termWin)
+    }
+  })
+
+  if (process.env.NODE_ENV === 'development') {
+    termWin.loadURL('http://localhost:5173/terminal.html')
+  } else {
+    termWin.loadFile(path.join(__dirname, '../dist/terminal.html'))
   }
 
   return { sessionId }
+}
+
+export function openWebSafe(url: string) {
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      throw new Error(`不支持的协议: ${parsed.protocol}`)
+    }
+    shell.openExternal(url)
+  } catch {
+    throw new Error('无效的 URL')
+  }
 }
 
 function connectSSH(sessionId: string, device: DeviceInfo, termWin: BrowserWindow) {
@@ -101,11 +115,12 @@ function connectSSH(sessionId: string, device: DeviceInfo, termWin: BrowserWindo
   }
 
   client.on('ready', () => {
-    client.shell({ term: 'xterm-256color' }, (err: Error | undefined, stream: ClientChannel) => {
+    client.shell({ term: 'xterm-256color', cols: 80, rows: 24 }, (err: Error | undefined, stream: ClientChannel) => {
       if (err) {
         if (!termWin.isDestroyed()) {
           termWin.webContents.send('terminal:data', `\r\nSSH错误: ${err.message}\r\n`)
         }
+        client.end()
         return
       }
 
@@ -138,6 +153,7 @@ function connectSSH(sessionId: string, device: DeviceInfo, termWin: BrowserWindo
     if (!termWin.isDestroyed()) {
       termWin.webContents.send('terminal:data', `\r\n连接错误: ${err.message}\r\n`)
     }
+    client.end()
   })
 
   client.connect(config)
