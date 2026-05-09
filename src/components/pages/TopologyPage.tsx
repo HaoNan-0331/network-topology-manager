@@ -1,11 +1,11 @@
 import { useCallback } from 'react'
-import { useNodesState, useEdgesState, addEdge, type Connection, type Node, type Edge } from 'reactflow'
+import { useNodesState, useEdgesState, addEdge, type Connection } from 'reactflow'
 import TopologyCanvas from '@/components/topology/TopologyCanvas'
-import type { TopologyEdgeData } from '@/types/topology'
+import type { TopologyNodeData, TopologyEdgeData } from '@/types/topology'
 
 export default function TopologyPage() {
-  const [nodes, , onNodesChange] = useNodesState<Node>([])
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge<TopologyEdgeData>>([])
+  const [nodes, , onNodesChange] = useNodesState<TopologyNodeData>([])
+  const [edges, setEdges, onEdgesChange] = useEdgesState<TopologyEdgeData>([])
 
   const handleConnect = useCallback(
     (connection: Connection, sourceInterface: string, targetInterface: string) => {

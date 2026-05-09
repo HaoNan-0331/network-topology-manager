@@ -30,8 +30,12 @@ export default function ConnectionModal({
   }, [open, form])
 
   const handleOk = async () => {
-    const values = await form.validateFields()
-    onConfirm(values.sourceInterface, values.targetInterface)
+    try {
+      const values = await form.validateFields()
+      onConfirm(values.sourceInterface, values.targetInterface)
+    } catch {
+      // validation failed, keep modal open
+    }
   }
 
   return (

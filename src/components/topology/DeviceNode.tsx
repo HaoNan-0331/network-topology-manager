@@ -1,5 +1,6 @@
 import React from 'react'
 import { Handle, Position, type NodeProps } from 'reactflow'
+import type { DeviceType } from '@/types/device'
 import type { TopologyNodeData } from '@/types/topology'
 
 function RouterIcon() {
@@ -85,7 +86,7 @@ function GenericIcon() {
   )
 }
 
-const iconMap: Record<string, () => React.JSX.Element> = {
+const iconMap: Record<DeviceType, () => React.JSX.Element> = {
   router: RouterIcon,
   switch: SwitchIcon,
   firewall: FirewallIcon,

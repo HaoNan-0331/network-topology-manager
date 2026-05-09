@@ -4,12 +4,11 @@ import ReactFlow, {
   MiniMap,
   Background,
   type Connection,
-  type Edge,
-  type Node,
   type OnNodesChange,
   type OnEdgesChange,
   BackgroundVariant,
 } from 'reactflow'
+import type { TopologyNode, TopologyEdge } from '@/types/topology'
 import DeviceNode from './DeviceNode'
 import EdgeWithInterfaces from './EdgeWithInterfaces'
 import ConnectionModal from './ConnectionModal'
@@ -18,8 +17,8 @@ const nodeTypes = { deviceNode: DeviceNode }
 const edgeTypes = { edgeWithInterfaces: EdgeWithInterfaces }
 
 interface TopologyCanvasProps {
-  nodes: Node[]
-  edges: Edge[]
+  nodes: TopologyNode[]
+  edges: TopologyEdge[]
   onNodesChange: OnNodesChange
   onEdgesChange: OnEdgesChange
   onConnect?: (connection: Connection, sourceInterface: string, targetInterface: string) => void
