@@ -44,14 +44,23 @@ export function getAiConfigMasked(): Record<string, string> | null {
 export function saveAiConfig(config: Record<string, string>): void {
   const db = getDatabase()
   const existing = db.prepare('SELECT id FROM ai_config LIMIT 1').get() as any
+
   if (existing) {
+    // Merge: only overwrite fields that are explicitly provided
+    const current = getAiConfig() || {}
+    const merged = {
+      provider: config.provider ?? current.provider ?? '',
+      apiKey: config.apiKey ?? current.apiKey ?? '',
+      baseUrl: config.baseUrl ?? current.baseUrl ?? '',
+      modelName: config.modelName ?? current.modelName ?? '',
+    }
     db.prepare(
       `UPDATE ai_config SET provider_enc=?, api_key_enc=?, base_url_enc=?, model_name_enc=? WHERE id=?`
     ).run(
-      encField(config.provider, MK),
-      encField(config.apiKey, MK),
-      encField(config.baseUrl, MK),
-      encField(config.modelName, MK),
+      encField(merged.provider, MK),
+      encField(merged.apiKey, MK),
+      encField(merged.baseUrl, MK),
+      encField(merged.modelName, MK),
       existing.id
     )
   } else {
@@ -60,10 +69,10 @@ export function saveAiConfig(config: Record<string, string>): void {
       `INSERT INTO ai_config (id, provider_enc, api_key_enc, base_url_enc, model_name_enc) VALUES (?,?,?,?,?)`
     ).run(
       id,
-      encField(config.provider, MK),
-      encField(config.apiKey, MK),
-      encField(config.baseUrl, MK),
-      encField(config.modelName, MK)
+      encField(config.provider ?? '', MK),
+      encField(config.apiKey ?? '', MK),
+      encField(config.baseUrl ?? '', MK),
+      encField(config.modelName ?? '', MK)
     )
   }
 }

@@ -1,6 +1,22 @@
 # CHANGELOG
 
+## 2026-05-10
+
+### Bug 修复
+- **AI助手不能用**：`ai.ts` `saveAiConfig` 使用 nullish coalescing 合并现有配置，避免部分字段更新时清空其他字段；`mock-api.ts` 同步修复
+- **拓扑不能连线**：`DeviceNode.tsx` Handle 组件添加 `id` 属性（top/bottom/left/right），React Flow 需要 handleId 匹配才能建立连接
+- **拓扑发现面板显示异常**：`DiscoveryPanel.tsx` 使用 `nodeNameMap` 将节点 ID 映射为设备名称，边列表正确显示 "设备A → 设备B" 而非 UUID
+
 ## 2026-05-09
+
+### Task 14: 拓扑自动发现（SSH采集+AI分析）
+- 新增 `electron/services/vendor-commands.ts`：厂商命令集（Huawei/Cisco/H3C 厂商检测 + 对应发现命令）
+- 新增 `electron/services/discovery.ts`：拓扑发现服务（SSH 采集设备信息 + AI 分析连接关系，返回节点/边/失败设备）
+- 新增 `src/components/topology/DiscoveryPanel.tsx`：发现面板 UI（设备多选、采集进度、结果展示、失败设备列表、确认导入）
+- 修改 `electron/services/ai.ts`：导出 `callAI`、`executeCommandOnDevice`、`getDeviceByIdInternal` 供 discovery 复用
+- 修改 `electron/main.ts`：注册 `ai:discoverTopology` IPC 处理器
+- 修改 `src/types/electron.d.ts`：补全 `discoverTopology` 返回类型（含 `failedDevices`）
+- 修改 `src/components/pages/TopologyPage.tsx`：添加拓扑发现按钮（FAB 区域）和 DiscoveryPanel 集成（去重合并）
 
 ### Task 13: 系统设置页面（AI配置+白名单编辑器+执行模式切换+日志查看器+退出登录）
 - 新增 `src/components/settings/CommandWhitelistEditor.tsx`：命令白名单编辑器（标签列表+添加/删除+保存）

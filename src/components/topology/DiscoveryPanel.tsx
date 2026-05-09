@@ -227,29 +227,32 @@ export default function DiscoveryPanel({
             </>
           )}
 
-          {resultEdges.length > 0 && (
-            <>
-              <Typography.Text strong>发现的连线：</Typography.Text>
-              <List
-                size="small"
-                dataSource={resultEdges}
-                style={{ maxHeight: 150, overflow: 'auto', marginBottom: 16 }}
-                renderItem={(edge) => (
-                  <List.Item>
-                    <Typography.Text>
-                      {edge.source} → {edge.target}
-                      {edge.data?.sourceInterface && (
-                        <Typography.Text type="secondary">
-                          {' '}
-                          ({edge.data.sourceInterface} - {edge.data.targetInterface})
-                        </Typography.Text>
-                      )}
-                    </Typography.Text>
-                  </List.Item>
-                )}
-              />
-            </>
-          )}
+          {resultEdges.length > 0 && (() => {
+            const nodeNameMap = new Map(resultNodes.map((n) => [n.id, n.data.deviceName]))
+            return (
+              <>
+                <Typography.Text strong>发现的连线：</Typography.Text>
+                <List
+                  size="small"
+                  dataSource={resultEdges}
+                  style={{ maxHeight: 150, overflow: 'auto', marginBottom: 16 }}
+                  renderItem={(edge) => (
+                    <List.Item>
+                      <Typography.Text>
+                        {nodeNameMap.get(edge.source) || edge.source} → {nodeNameMap.get(edge.target) || edge.target}
+                        {edge.data?.sourceInterface && (
+                          <Typography.Text type="secondary">
+                            {' '}
+                            ({edge.data.sourceInterface} - {edge.data.targetInterface})
+                          </Typography.Text>
+                        )}
+                      </Typography.Text>
+                    </List.Item>
+                  )}
+                />
+              </>
+            )
+          })()}
 
           {failedDevices.length > 0 && (
             <>

@@ -99,10 +99,10 @@ export default function DeviceNode({ data, selected }: NodeProps<TopologyNodeDat
 
   return (
     <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-      <Handle type="target" position={Position.Top} style={{ visibility: 'hidden' }} />
-      <Handle type="target" position={Position.Bottom} style={{ visibility: 'hidden' }} />
-      <Handle type="target" position={Position.Left} style={{ visibility: 'hidden' }} />
-      <Handle type="target" position={Position.Right} style={{ visibility: 'hidden' }} />
+      <Handle type="target" position={Position.Top} id="top" style={{ background: '#1890ff', width: 8, height: 8 }} />
+      <Handle type="target" position={Position.Bottom} id="bottom" style={{ background: '#1890ff', width: 8, height: 8 }} />
+      <Handle type="target" position={Position.Left} id="left" style={{ background: '#1890ff', width: 8, height: 8 }} />
+      <Handle type="target" position={Position.Right} id="right" style={{ background: '#1890ff', width: 8, height: 8 }} />
 
       <div
         style={{
@@ -140,10 +140,10 @@ export default function DeviceNode({ data, selected }: NodeProps<TopologyNodeDat
         {data.ipAddress}
       </div>
 
-      <Handle type="source" position={Position.Top} style={{ visibility: 'hidden' }} id="top" />
-      <Handle type="source" position={Position.Bottom} style={{ visibility: 'hidden' }} id="bottom" />
-      <Handle type="source" position={Position.Left} style={{ visibility: 'hidden' }} id="left" />
-      <Handle type="source" position={Position.Right} style={{ visibility: 'hidden' }} id="right" />
+      <Handle type="source" position={Position.Top} id="top" style={{ background: '#52c41a', width: 8, height: 8 }} />
+      <Handle type="source" position={Position.Bottom} id="bottom" style={{ background: '#52c41a', width: 8, height: 8 }} />
+      <Handle type="source" position={Position.Left} id="left" style={{ background: '#52c41a', width: 8, height: 8 }} />
+      <Handle type="source" position={Position.Right} id="right" style={{ background: '#52c41a', width: 8, height: 8 }} />
     </div>
   )
 }

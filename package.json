@@ -5,8 +5,11 @@
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -p tsconfig.web.json && vite build && tsc -p tsconfig.node.json",
-    "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "build:electron-main": "esbuild electron/main.ts --outfile=dist-electron/main.js --platform=node --format=cjs --bundle --external:better-sqlite3 --external:ssh2 --external:electron",
+    "build:preload": "esbuild electron/preload.ts --outfile=dist-electron/preload.js --platform=node --format=cjs --bundle --external:electron && esbuild electron/terminal-preload.ts --outfile=dist-electron/terminal-preload.js --platform=node --format=cjs --bundle --external:electron",
+    "build:electron": "npm run build:electron-main && npm run build:preload && node scripts/build-electron.cjs",
+    "build": "tsc -p tsconfig.web.json && vite build && npm run build:electron",
+    "electron:dev": "npm run build:electron && concurrently \"vite\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
     "electron:build": "npm run build && electron-builder",
     "test": "vitest run",
     "test:watch": "vitest"
@@ -31,6 +34,7 @@
     "test": "tests"
   },
   "devDependencies": {
+    "@electron/rebuild": "^4.0.4",
     "@types/better-sqlite3": "^7.6.13",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
@@ -38,8 +42,10 @@
     "@types/uuid": "^10.0.0",
     "@vitejs/plugin-react": "^6.0.1",
     "concurrently": "^9.2.1",
-    "electron": "^42.0.1",
+    "cross-env": "^10.1.0",
+    "electron": "^41.0.3",
     "electron-builder": "^26.8.1",
+    "esbuild": "^0.28.0",
     "jsdom": "^29.1.1",
     "typescript": "^6.0.3",
     "vite": "^8.0.11",
