@@ -5,6 +5,7 @@ import { createTables } from './database/init'
 import { getOrCreateMasterKey } from './utils/keyManager'
 import { generateCaptcha, login, isFirstRun, initAdmin } from './services/auth'
 import { setDeviceMasterKey, listDevices, createDevice, updateDevice, deleteDevice, getDeviceById } from './services/device'
+import { setTopologyMasterKey, listTopologies, getTopologyById, createTopology, updateTopology, deleteTopology, exportTopology, importTopology } from './services/topology'
 
 let mainWindow: BrowserWindow | null = null
 let masterKey: string
@@ -34,6 +35,7 @@ function createWindow() {
 app.whenReady().then(() => {
   masterKey = getOrCreateMasterKey()
   setDeviceMasterKey(masterKey)
+  setTopologyMasterKey(masterKey)
   initDatabase()
   createTables()
 
@@ -49,6 +51,15 @@ app.whenReady().then(() => {
   ipcMain.handle('device:update', (_e, id, data) => updateDevice(id, data))
   ipcMain.handle('device:delete', (_e, id) => deleteDevice(id))
   ipcMain.handle('device:getById', (_e, id) => getDeviceById(id))
+
+  // Topology IPC
+  ipcMain.handle('topology:list', () => listTopologies())
+  ipcMain.handle('topology:getById', (_e, id) => getTopologyById(id))
+  ipcMain.handle('topology:create', (_e, data) => createTopology(data))
+  ipcMain.handle('topology:update', (_e, id, data) => updateTopology(id, data))
+  ipcMain.handle('topology:delete', (_e, id) => deleteTopology(id))
+  ipcMain.handle('topology:exportJson', (_e, id) => exportTopology(id))
+  ipcMain.handle('topology:importJson', (_e, data) => importTopology(data))
 
   createWindow()
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })

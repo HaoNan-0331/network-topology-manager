@@ -2,6 +2,13 @@
 
 ## 2026-05-09
 
+### Task 10: 拓扑管理页面（含导入导出）
+- 新增 `electron/services/topology.ts`：拓扑 CRUD 服务（名称/数据加密，导入导出）
+- 新增 `src/components/topology/TopologyToolbar.tsx`：工具栏（选择拓扑/新建/保存/删除/导入/导出）
+- 新增 `src/components/topology/AddDeviceModal.tsx`：设备选择弹窗（从设备列表添加到画布）
+- 替换 `src/components/pages/TopologyPage.tsx`：完整拓扑管理（IPC CRUD、自动保存、导入导出）
+- 修改 `electron/main.ts`：注册拓扑 IPC 处理器，共享 masterKey
+
 ### Task 9: React Flow 拓扑画布
 - 新增 `src/types/topology.ts`：TopologyNodeData/TopologyEdgeData/Topology 类型定义
 - 新增 `src/components/topology/DeviceNode.tsx`：自定义设备节点（router/switch/firewall/server/generic 图标，设备名悬浮在图标上方）
