@@ -9,6 +9,15 @@ export function createTables() {
       created_at TEXT DEFAULT (datetime('now','localtime'))
     );
 
+    CREATE TABLE IF NOT EXISTS topologies (
+      id TEXT PRIMARY KEY,
+      name_enc TEXT NOT NULL,
+      data_enc TEXT NOT NULL,
+      status TEXT DEFAULT 'active' CHECK(status IN ('active','pending','draft')),
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      updated_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+
     CREATE TABLE IF NOT EXISTS devices (
       id TEXT PRIMARY KEY,
       topology_id TEXT,
@@ -28,15 +37,6 @@ export function createTables() {
       created_at TEXT DEFAULT (datetime('now','localtime')),
       updated_at TEXT DEFAULT (datetime('now','localtime')),
       FOREIGN KEY (topology_id) REFERENCES topologies(id) ON DELETE SET NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS topologies (
-      id TEXT PRIMARY KEY,
-      name_enc TEXT NOT NULL,
-      data_enc TEXT NOT NULL,
-      status TEXT DEFAULT 'active' CHECK(status IN ('active','pending','draft')),
-      created_at TEXT DEFAULT (datetime('now','localtime')),
-      updated_at TEXT DEFAULT (datetime('now','localtime'))
     );
 
     CREATE TABLE IF NOT EXISTS ai_config (

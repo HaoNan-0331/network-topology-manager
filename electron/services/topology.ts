@@ -113,7 +113,15 @@ export function exportTopology(id: string): string {
 }
 
 export function importTopology(jsonStr: string) {
-  const data = JSON.parse(jsonStr)
+  let data: any
+  try {
+    data = JSON.parse(jsonStr)
+  } catch {
+    throw new Error('无效的 JSON 格式')
+  }
+  if (!data || typeof data !== 'object') throw new Error('JSON 必须是对象')
+  if (data.nodes !== undefined && !Array.isArray(data.nodes)) throw new Error('nodes 必须是数组')
+  if (data.edges !== undefined && !Array.isArray(data.edges)) throw new Error('edges 必须是数组')
   return createTopology({
     name: data.name || 'Imported Topology',
     nodes: data.nodes || [],

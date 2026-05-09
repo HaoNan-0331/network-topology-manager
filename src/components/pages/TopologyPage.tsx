@@ -14,6 +14,7 @@ export default function TopologyPage() {
   const [edges, setEdges, onEdgesChange] = useEdgesState<TopologyEdgeData>([])
   const [addDeviceOpen, setAddDeviceOpen] = useState(false)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const isLoadingRef = useRef(false)
 
   const fetchTopologies = useCallback(async () => {
     const list = await window.api.topology.list()
@@ -25,11 +26,13 @@ export default function TopologyPage() {
   }, [fetchTopologies])
 
   const loadTopology = useCallback(async (id: string) => {
+    isLoadingRef.current = true
     const topo = await window.api.topology.getById(id)
     if (topo) {
       setNodes(topo.nodes || [])
       setEdges(topo.edges || [])
     }
+    isLoadingRef.current = false
   }, [setNodes, setEdges])
 
   const handleTopologyChange = useCallback((id: string | null) => {
@@ -44,6 +47,7 @@ export default function TopologyPage() {
 
   const saveTopology = useCallback(async () => {
     if (!currentTopologyId) return
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     await window.api.topology.update(currentTopologyId, {
       nodes: nodes.map((n) => ({ ...n })),
       edges: edges.map((e) => ({ ...e })),
@@ -63,6 +67,7 @@ export default function TopologyPage() {
   }, [currentTopologyId, nodes, edges])
 
   useEffect(() => {
+    if (isLoadingRef.current) return
     if (currentTopologyId && (nodes.length > 0 || edges.length > 0)) {
       debouncedSave()
     }
