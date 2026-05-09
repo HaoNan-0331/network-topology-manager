@@ -2,6 +2,19 @@
 
 ## 2026-05-09
 
+### Task 13: 系统设置页面（AI配置+白名单编辑器+执行模式切换+日志查看器+退出登录）
+- 新增 `src/components/settings/CommandWhitelistEditor.tsx`：命令白名单编辑器（标签列表+添加/删除+保存）
+- 新增 `src/components/settings/AIExecLogViewer.tsx`：AI 执行日志表格查看器（分页、状态彩色标签、刷新）
+- 新增 `src/components/settings/ExecModeSwitch.tsx`：执行模式切换（确认/自动，切换自动需密码验证弹窗）
+- 替换 `src/components/pages/SettingsPage.tsx`：完整设置页（AI模型配置表单、白名单、执行模式、日志查看、退出登录）
+
+### Task 12: AI 服务（配置+对话+设备查询+命令安全+日志）
+- 新增 `electron/services/commandSafety.ts`：命令白名单安全检查（白名单前缀匹配+黑名单正则双重防护）
+- 新增 `electron/services/aiExecLogger.ts`：AI 执行日志记录（创建/更新状态/查询，设备名加密存储）
+- 新增 `electron/services/ai.ts`：AI 服务核心（配置管理、OpenAI兼容API调用、设备SSH命令执行、确认/自动模式、聊天历史持久化）
+- 修改 `electron/main.ts`：注册 AI IPC 处理器（chat/getConfig/saveConfig/whitelist/execMode/confirm/logs/history）
+- 替换 `src/components/pages/AIPage.tsx`：完整AI聊天界面（设备选择、消息气泡、确认弹窗、未配置提示）
+
 ### Task 11: 设备连接（独立弹窗终端+SSH Key）
 - 新增 `electron/services/connection.ts`：连接服务（SSH/Telnet连接管理、终端窗口创建、SSH Key认证优先）
 - 新增 `electron/terminal-preload.ts`：终端弹窗预加载脚本（terminalApi 桥接）
