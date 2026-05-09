@@ -160,7 +160,7 @@ export default function DiscoveryPanel({
       onCancel={handleCancel}
       footer={renderFooter()}
       width={600}
-      destroyOnClose
+      destroyOnHidden
     >
       {step === 'select' && (
         <>

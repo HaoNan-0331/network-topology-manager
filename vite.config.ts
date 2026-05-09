@@ -7,5 +7,15 @@ export default defineConfig({
   resolve: { alias: { '@': path.resolve(__dirname, './src') } },
   base: './',
   build: { outDir: 'dist', emptyOutDir: true },
-  server: { port: 5173, strictPort: true },
+  server: {
+    port: 5173,
+    strictPort: true,
+    proxy: {
+      '/proxy/ai': {
+        target: 'https://ark.cn-beijing.volces.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/proxy\/ai/, ''),
+      },
+    },
+  },
 })

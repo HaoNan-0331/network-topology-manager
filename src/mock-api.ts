@@ -97,10 +97,31 @@ if (!(window as any).api) {
       write: async (_sid: string, _data: string) => ({ success: true }),
     },
     ai: {
-      chat: async (_messages: any[], _deviceId?: string) => '这是 AI 模拟回复。当前为浏览器测试模式，不会执行实际命令。',
+      chat: async (messages: any[], _deviceId?: string) => {
+        const config = aiConfig
+        if (!config || !config.apiKey) throw new Error('请先配置 AI 服务（API Key 未设置）')
+        // Use Vite proxy to avoid CORS in browser mode
+        const apiBase = '/proxy/ai/api/coding/v3'
+        const res = await fetch(`${apiBase}/chat/completions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.apiKey}` },
+          body: JSON.stringify({ model: config.modelName, messages }),
+        })
+        if (!res.ok) { const t = await res.text(); throw new Error(`AI API 错误 (${res.status}): ${t}`) }
+        const data = await res.json()
+        return data.choices?.[0]?.message?.content || ''
+      },
       discoverTopology: async (_deviceIds: string[]) => ({ nodes: [], edges: [], failedDevices: [] }),
-      getConfig: async () => aiConfig ? { ...aiConfig, apiKey: '****test' } : null,
-      saveConfig: async (config: any) => { aiConfig = { ...aiConfig, ...config }; save('aiConfig', aiConfig); return { success: true } },
+      getConfig: async () => aiConfig ? { ...aiConfig, apiKey: aiConfig.apiKey ? `****${aiConfig.apiKey.slice(-4)}` : '' } : null,
+      saveConfig: async (config: any) => {
+        // Merge: only overwrite non-masked fields
+        const merged = { ...aiConfig, ...config }
+        // If apiKey looks masked, keep the old one
+        if (config.apiKey && config.apiKey.startsWith('****')) {
+          merged.apiKey = aiConfig?.apiKey || ''
+        }
+        aiConfig = merged; save('aiConfig', aiConfig); return { success: true }
+      },
       getCommandWhitelist: async () => [...commandWhitelist],
       saveCommandWhitelist: async (list: string[]) => { commandWhitelist = [...list]; save('whitelist', commandWhitelist); return { success: true } },
       getExecMode: async () => execMode,

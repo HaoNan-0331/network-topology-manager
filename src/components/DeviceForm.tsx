@@ -27,7 +27,7 @@ export default function DeviceForm({ open, device, onOk, onCancel }: Props) {
   }, [device, form, open])
 
   return (
-    <Modal title={device ? '编辑设备' : '添加设备'} open={open} onOk={() => form.submit()} onCancel={onCancel} width={600} destroyOnClose>
+    <Modal title={device ? '编辑设备' : '添加设备'} open={open} onOk={() => form.submit()} onCancel={onCancel} width={600} destroyOnHidden>
       <Form form={form} layout="vertical" onFinish={onOk}>
         <Form.Item name="name" label="设备名称" rules={[{ required: true, message: '请输入设备名称' }]}>
           <Input />

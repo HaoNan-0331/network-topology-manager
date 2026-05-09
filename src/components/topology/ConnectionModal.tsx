@@ -46,7 +46,7 @@ export default function ConnectionModal({
       onCancel={onCancel}
       okText="确认"
       cancelText="取消"
-      destroyOnClose
+      destroyOnHidden
       width={440}
     >
       <Form form={form} layout="vertical" style={{ marginTop: 16 }}>

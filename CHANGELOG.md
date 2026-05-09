@@ -2,6 +2,11 @@
 
 ## 2026-05-10
 
+### 增强
+- **Mock AI 调用真实接口**：`mock-api.ts` 的 `ai.chat` 直接调用 AI API，通过 Vite proxy 解决 CORS
+- **Vite 代理配置**：`vite.config.ts` 添加 `/proxy/ai` 代理，浏览器模式可正常使用 AI 功能
+- **修复 antd 废弃 API**：`destroyOnClose` → `destroyOnHidden`（DeviceForm/ConnectionModal/DiscoveryPanel）
+
 ### Bug 修复
 - **AI助手不能用**：`ai.ts` `saveAiConfig` 使用 nullish coalescing 合并现有配置，避免部分字段更新时清空其他字段；`mock-api.ts` 同步修复
 - **拓扑不能连线**：`DeviceNode.tsx` Handle 组件添加 `id` 属性（top/bottom/left/right），React Flow 需要 handleId 匹配才能建立连接
