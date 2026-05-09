@@ -1,0 +1,10 @@
+appId: com.network-topology.manager
+productName: 网络拓扑管理工具
+directories:
+  output: release
+win:
+  target: nsis
+  icon: public/icon.png
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
