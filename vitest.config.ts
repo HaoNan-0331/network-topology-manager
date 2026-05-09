@@ -5,8 +5,14 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/**/*.test.ts'],
+    server: {
+      deps: {
+        inline: ['../../electron'],
+      },
+    },
   },
   resolve: {
     alias: { '@': path.resolve(__dirname, './src') },
+    extensions: ['.ts', '.tsx', '.js', '.jsx', '.json'],
   },
 })
