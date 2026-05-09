@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Spin } from 'antd'
 import Login from './components/Login'
 import InitAdmin from './components/InitAdmin'
+import MainLayout from './components/MainLayout'
 import { useAuthStore } from './stores/authStore'
 
 export default function App() {
@@ -20,13 +21,7 @@ export default function App() {
     )
   }
 
-  if (isFirstRun) {
-    return <InitAdmin onSuccess={() => window.location.reload()} />
-  }
-
-  if (!isLoggedIn) {
-    return <Login />
-  }
-
-  return <div style={{ padding: 40, textAlign: 'center' }}>主界面加载中...（Task 7 中实现）</div>
+  if (isFirstRun) return <InitAdmin onSuccess={() => window.location.reload()} />
+  if (!isLoggedIn) return <Login />
+  return <MainLayout />
 }
