@@ -75,6 +75,8 @@ export default function AddDeviceModal({
           deviceType: device.deviceType,
           connectionType: device.connectionType,
           ipAddress: device.ipAddress,
+          vendor: device.vendor,
+          model: device.model,
         },
       }
     })

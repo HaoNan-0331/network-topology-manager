@@ -123,18 +123,34 @@ export function saveCommandWhitelist(list: string[]): void {
   transaction()
 }
 
-// ---------- Chat history ----------
+// ---------- Chat sessions ----------
 
-export function getChatHistory(): Array<{
-  id: string
-  role: string
-  content: string
-  deviceId: string | null
-  createdAt: string
+export function createSession(title: string, deviceId?: string): { id: string; title: string; deviceId: string | null; createdAt: string } {
+  const id = uuidv4()
+  getDatabase().prepare(
+    'INSERT INTO chat_sessions (id, title, device_id) VALUES (?, ?, ?)'
+  ).run(id, title, deviceId || null)
+  return { id, title, deviceId: deviceId || null, createdAt: new Date().toISOString() }
+}
+
+export function listSessions(): Array<{ id: string; title: string; deviceId: string | null; createdAt: string }> {
+  const rows = getDatabase()
+    .prepare('SELECT * FROM chat_sessions ORDER BY created_at DESC')
+    .all() as any[]
+  return rows.map((row) => ({
+    id: row.id,
+    title: row.title,
+    deviceId: row.device_id,
+    createdAt: row.created_at,
+  }))
+}
+
+export function getSessionMessages(sessionId: string): Array<{
+  id: string; role: string; content: string; deviceId: string | null; createdAt: string
 }> {
   const rows = getDatabase()
-    .prepare('SELECT * FROM chat_history ORDER BY created_at ASC')
-    .all() as any[]
+    .prepare('SELECT * FROM chat_history WHERE session_id = ? ORDER BY created_at ASC')
+    .all(sessionId) as any[]
   return rows.map((row) => ({
     id: row.id,
     role: row.role,
@@ -144,15 +160,50 @@ export function getChatHistory(): Array<{
   }))
 }
 
-function saveChatMessage(
+export function deleteSession(sessionId: string): void {
+  getDatabase().prepare('DELETE FROM chat_history WHERE session_id = ?').run(sessionId)
+  getDatabase().prepare('DELETE FROM chat_sessions WHERE id = ?').run(sessionId)
+}
+
+export function updateSessionTitle(sessionId: string, title: string): void {
+  getDatabase().prepare('UPDATE chat_sessions SET title = ? WHERE id = ?').run(title, sessionId)
+}
+
+// ---------- Chat history ----------
+
+export function getChatHistory(sessionId?: string): Array<{
+  id: string
+  role: string
+  content: string
+  deviceId: string | null
+  createdAt: string
+}> {
+  const rows = sessionId
+    ? getDatabase().prepare('SELECT * FROM chat_history WHERE session_id = ? ORDER BY created_at ASC').all(sessionId) as any[]
+    : getDatabase().prepare('SELECT * FROM chat_history ORDER BY created_at ASC').all() as any[]
+  return rows.map((row) => ({
+    id: row.id,
+    role: row.role,
+    content: decField(row.content_enc, MK),
+    deviceId: row.device_id,
+    createdAt: row.created_at,
+  }))
+}
+
+export function saveChatMessage(
   role: string,
   content: string,
-  deviceId: string | null
+  deviceId: string | null,
+  sessionId?: string | null
 ): void {
   const id = uuidv4()
   getDatabase().prepare(
-    'INSERT INTO chat_history (id, role, content_enc, device_id) VALUES (?, ?, ?, ?)'
-  ).run(id, role, encField(content, MK), deviceId || null)
+    'INSERT INTO chat_history (id, role, content_enc, device_id, session_id) VALUES (?, ?, ?, ?, ?)'
+  ).run(id, role, encField(content, MK), deviceId || null, sessionId || null)
+}
+
+export function clearChatHistory(): void {
+  // Deprecated: use deleteSession instead
 }
 
 // ---------- AI API call ----------
@@ -193,6 +244,26 @@ export function executeCommandOnDevice(
       port: device.port || 22,
       username: device.username || 'root',
       readyTimeout: 10000,
+      algorithms: {
+        kex: [
+          'ecdh-sha2-nistp256', 'ecdh-sha2-nistp384', 'ecdh-sha2-nistp521',
+          'diffie-hellman-group-exchange-sha256', 'diffie-hellman-group14-sha256',
+          'diffie-hellman-group15-sha512', 'diffie-hellman-group16-sha512',
+          'diffie-hellman-group-exchange-sha1', 'diffie-hellman-group14-sha1',
+          'diffie-hellman-group1-sha1',
+        ],
+        cipher: [
+          'aes128-gcm@openssh.com', 'aes256-gcm@openssh.com',
+          'aes128-ctr', 'aes192-ctr', 'aes256-ctr',
+          'aes128-cbc', 'aes192-cbc', 'aes256-cbc',
+          '3des-cbc', 'blowfish-cbc',
+        ],
+        serverHostKey: [
+          'ssh-rsa', 'rsa-sha2-256', 'rsa-sha2-512',
+          'ecdsa-sha2-nistp256', 'ecdsa-sha2-nistp384', 'ecdsa-sha2-nistp521',
+          'ssh-ed25519', 'ssh-dss',
+        ],
+      },
     }
     if (device.sshKeyContent) {
       cfg.privateKey = Buffer.from(device.sshKeyContent)
@@ -267,56 +338,97 @@ export function getDeviceByIdInternal(id: string): any {
 
 // ---------- Pending command store (for confirm mode) ----------
 
-const pendingCommands = new Map<
+const pendingBatches = new Map<
   string,
   {
-    deviceId: string
-    deviceName: string
-    command: string
-    aiReason: string
-    mode: string
-    resolve: (result: string) => void
-    reject: (err: Error) => void
+    commands: Array<{
+      logId: string
+      deviceId: string
+      deviceName: string
+      command: string
+    }>
+    rejectedCommands: Array<{
+      deviceName: string
+      cmd: string
+      reason: string
+    }>
+    fullMessages: Array<{ role: string; content: string }>
+    aiReply: string
+    config: Record<string, string>
+    deviceNames: string[]
+    sessionId: string | null
   }
 >()
 
 export async function confirmCommand(
-  execId: string,
+  batchId: string,
   approved: boolean
-): Promise<void> {
-  const pending = pendingCommands.get(execId)
-  if (!pending) throw new Error('未找到待确认命令')
-  pendingCommands.delete(execId)
+): Promise<string> {
+  const batch = pendingBatches.get(batchId)
+  if (!batch) throw new Error('未找到待确认命令')
+  pendingBatches.delete(batchId)
 
   if (!approved) {
-    updateLogStatus(execId, 'rejected')
-    pending.resolve('用户拒绝了该命令的执行。')
-    return
+    for (const cmd of batch.commands) {
+      updateLogStatus(cmd.logId, 'rejected')
+    }
+    const msg = '用户拒绝了所有命令的执行。'
+    saveChatMessage('assistant', msg, null, batch.sessionId)
+    return msg
   }
 
-  updateLogStatus(execId, 'approved')
-  const device = getDeviceByIdInternal(pending.deviceId)
-  if (!device) {
-    updateLogStatus(execId, 'failed')
-    pending.resolve('设备不存在，无法执行命令。')
-    return
+  // Execute all approved commands
+  const cmdResults: Array<{ deviceName: string; cmd: string; output: string; status: string }> = []
+
+  for (const cmd of batch.commands) {
+    updateLogStatus(cmd.logId, 'approved')
+    const device = getDeviceByIdInternal(cmd.deviceId)
+    if (!device) {
+      updateLogStatus(cmd.logId, 'failed')
+      cmdResults.push({ deviceName: cmd.deviceName, cmd: cmd.command, output: '设备不存在', status: 'failed' })
+      continue
+    }
+    try {
+      const output = await executeCommandOnDevice(device, cmd.command)
+      updateLogStatus(cmd.logId, 'executed')
+      cmdResults.push({ deviceName: cmd.deviceName, cmd: cmd.command, output, status: 'executed' })
+    } catch (err: any) {
+      updateLogStatus(cmd.logId, 'failed')
+      cmdResults.push({ deviceName: cmd.deviceName, cmd: cmd.command, output: `执行失败: ${err.message}`, status: 'failed' })
+    }
   }
 
-  try {
-    const output = await executeCommandOnDevice(device, pending.command)
-    updateLogStatus(execId, 'executed')
-    pending.resolve(output)
-  } catch (err: any) {
-    updateLogStatus(execId, 'failed')
-    pending.resolve(`命令执行失败: ${err.message}`)
+  // Add previously rejected commands
+  for (const r of batch.rejectedCommands) {
+    cmdResults.push({ deviceName: r.deviceName, cmd: r.cmd, output: `命令被拒绝: ${r.reason}`, status: 'rejected' })
   }
+
+  // Send results to AI for analysis
+  const resultsText = cmdResults
+    .map((r) => `设备: ${r.deviceName}\n命令: ${r.cmd}\n状态: ${r.status}\n输出:\n${r.output}`)
+    .join('\n\n')
+
+  const deviceNamesStr = batch.deviceNames.join(', ')
+  const followUpMessages: Array<{ role: string; content: string }> = [
+    ...batch.fullMessages,
+    { role: 'assistant', content: batch.aiReply },
+    {
+      role: 'user',
+      content: `以下是在设备 ${deviceNamesStr} 上执行命令的结果，请分析并给出总结：\n\n${resultsText}`,
+    },
+  ]
+
+  const finalReply = await callAI(batch.config, followUpMessages)
+  saveChatMessage('assistant', finalReply, null, batch.sessionId)
+  return finalReply
 }
 
 // ---------- Main chat ----------
 
 export async function chat(
   messages: Array<{ role: string; content: string }>,
-  deviceId?: string
+  deviceIds?: string[],
+  sessionId?: string
 ): Promise<string> {
   const config = getAiConfig()
   if (!config || !config.apiKey) {
@@ -330,16 +442,28 @@ export async function chat(
   let systemPrompt =
     '你是一个网络设备管理AI助手。你可以帮助用户查询网络设备状态、分析网络问题。' +
     '当需要查询设备信息时，请在回复中使用特殊格式标记要执行的命令：\n' +
-    '[CMD]命令内容[/CMD]\n' +
+    '[CMD:设备名]命令内容[/CMD]\n' +
+    '如果只有一个设备，也可以用 [CMD]命令内容[/CMD]\n' +
     '每个命令单独一行。你可以在命令前后添加解释说明。\n' +
     '注意：只能执行只读查询命令（如 display、show、ping、traceroute），不能执行修改配置的命令。'
 
-  let targetDevice: any = null
-
-  if (deviceId) {
-    targetDevice = getDeviceByIdInternal(deviceId)
-    if (!targetDevice) throw new Error('设备不存在')
-    systemPrompt += `\n\n当前目标设备信息：\n- 名称: ${targetDevice.name}\n- IP: ${targetDevice.ipAddress}\n- 厂商: ${targetDevice.vendor || '未知'}\n- 型号: ${targetDevice.model || '未知'}\n- 版本: ${targetDevice.version || '未知'}`
+  // Load target devices
+  const targetDevices: any[] = []
+  if (deviceIds && deviceIds.length > 0) {
+    for (const did of deviceIds) {
+      const dev = getDeviceByIdInternal(did)
+      if (dev) targetDevices.push(dev)
+    }
+    if (targetDevices.length === 1) {
+      const d = targetDevices[0]
+      systemPrompt += `\n\n当前目标设备信息：\n- 名称: ${d.name}\n- IP: ${d.ipAddress}\n- 厂商: ${d.vendor || '未知'}\n- 型号: ${d.model || '未知'}\n- 版本: ${d.version || '未知'}`
+    } else if (targetDevices.length > 1) {
+      systemPrompt += '\n\n当前目标设备（多台）：'
+      for (const d of targetDevices) {
+        systemPrompt += `\n---\n- 名称: ${d.name}\n- IP: ${d.ipAddress}\n- 厂商: ${d.vendor || '未知'}\n- 型号: ${d.model || '未知'}\n- 版本: ${d.version || '未知'}`
+      }
+      systemPrompt += '\n\n你可以在不同设备上执行不同命令，请用 [CMD:设备名] 格式指定在哪台设备上执行。'
+    }
   }
 
   const fullMessages: Array<{ role: string; content: string }> = [
@@ -349,25 +473,35 @@ export async function chat(
 
   const aiReply = await callAI(config, fullMessages)
 
-  // Extract [CMD]...[/CMD] blocks (no dotAll flag - single line per command)
-  const cmdRegex = /\[CMD\](.*?)\[\/CMD\]/g
-  const commands: string[] = []
+  // Extract [CMD:device]...[/CMD] or [CMD]...[/CMD] blocks
+  const cmdRegex = /\[CMD(?::([^\]]+))?\](.*?)\[\/CMD\]/g
+  const commands: Array<{ deviceName: string; cmd: string }> = []
   let match: RegExpExecArray | null
   while ((match = cmdRegex.exec(aiReply)) !== null) {
-    commands.push(match[1].trim())
+    const deviceName = (match[1] || '').trim()
+    const cmd = match[2].trim()
+    commands.push({ deviceName, cmd })
   }
 
-  // No commands — just return the reply
-  if (commands.length === 0 || !targetDevice) {
-    saveChatMessage('user', messages[messages.length - 1]?.content || '', deviceId || null)
-    saveChatMessage('assistant', aiReply, deviceId || null)
+  // No commands or no devices — just return the reply
+  if (commands.length === 0 || targetDevices.length === 0) {
+    saveChatMessage('user', messages[messages.length - 1]?.content || '', null, sessionId)
+    saveChatMessage('assistant', aiReply, null, sessionId)
     return aiReply
   }
 
-  // Process commands
-  const cmdResults: Array<{ cmd: string; output: string; status: string }> = []
+  // Collect all commands with safety check
+  const allowedCommands: Array<{
+    logId: string
+    deviceId: string
+    deviceName: string
+    command: string
+  }> = []
+  const rejectedCommands: Array<{ deviceName: string; cmd: string; reason: string }> = []
 
-  for (const cmd of commands) {
+  for (const { deviceName, cmd } of commands) {
+    let targetDevice = targetDevices.find((d) => d.name === deviceName) || targetDevices[0]
+
     const safety = isCommandAllowed(cmd, whitelist)
     const logId = createLog({
       deviceId: targetDevice.id,
@@ -379,53 +513,91 @@ export async function chat(
     })
 
     if (!safety.allowed) {
-      cmdResults.push({ cmd, output: `命令被拒绝: ${safety.reason}`, status: 'rejected' })
+      rejectedCommands.push({ deviceName: targetDevice.name, cmd, reason: safety.reason })
       continue
     }
 
-    if (execMode === 'confirm') {
-      // Return a special response telling the user to confirm
-      const confirmResponse = JSON.stringify({
-        type: 'confirm_required',
-        execId: logId,
-        deviceName: targetDevice.name,
-        command: cmd,
-        aiExplanation: aiReply,
-      })
-      saveChatMessage('user', messages[messages.length - 1]?.content || '', deviceId || null)
-      saveChatMessage('assistant', `等待确认命令: ${cmd}`, deviceId || null)
-      return confirmResponse
-    }
+    allowedCommands.push({
+      logId,
+      deviceId: targetDevice.id,
+      deviceName: targetDevice.name,
+      command: cmd,
+    })
+  }
 
-    // Auto mode — execute directly
+  // No allowed commands — return AI reply + rejection notices
+  if (allowedCommands.length === 0) {
+    const rejectionText = rejectedCommands.map((r) => `命令 [${r.deviceName}] ${r.cmd} 被拒绝: ${r.reason}`).join('\n')
+    const fullReply = aiReply + '\n\n' + rejectionText
+    saveChatMessage('user', messages[messages.length - 1]?.content || '', null, sessionId)
+    saveChatMessage('assistant', fullReply, null, sessionId)
+    return fullReply
+  }
+
+  // Confirm mode: store batch and wait for approval
+  if (execMode === 'confirm') {
+    const batchId = allowedCommands[0].logId
+    pendingBatches.set(batchId, {
+      commands: allowedCommands,
+      rejectedCommands,
+      fullMessages,
+      aiReply,
+      config,
+      deviceNames: targetDevices.map((d) => d.name),
+      sessionId: sessionId || null,
+    })
+
+    const confirmResponse = JSON.stringify({
+      type: 'confirm_required',
+      execId: batchId,
+      commands: allowedCommands.map((c) => ({ deviceName: c.deviceName, command: c.command })),
+      rejectedCommands: rejectedCommands.map((r) => ({ command: r.cmd, reason: r.reason })),
+      aiExplanation: aiReply,
+    })
+    saveChatMessage('user', messages[messages.length - 1]?.content || '', null, sessionId)
+    saveChatMessage('assistant', `等待确认 ${allowedCommands.length} 条命令...`, null, sessionId)
+    return confirmResponse
+  }
+
+  // Auto mode: execute all commands
+  const cmdResults: Array<{ deviceName: string; cmd: string; output: string; status: string }> = []
+
+  for (const { logId, deviceId, deviceName, command } of allowedCommands) {
+    const device = getDeviceByIdInternal(deviceId)
     try {
-      const output = await executeCommandOnDevice(targetDevice, cmd)
+      const output = await executeCommandOnDevice(device, command)
       updateLogStatus(logId, 'executed')
-      cmdResults.push({ cmd, output, status: 'executed' })
+      cmdResults.push({ deviceName, cmd: command, output, status: 'executed' })
     } catch (err: any) {
       updateLogStatus(logId, 'failed')
-      cmdResults.push({ cmd, output: `执行失败: ${err.message}`, status: 'failed' })
+      cmdResults.push({ deviceName, cmd: command, output: `执行失败: ${err.message}`, status: 'failed' })
     }
+  }
+
+  // Add rejected commands to results
+  for (const r of rejectedCommands) {
+    cmdResults.push({ deviceName: r.deviceName, cmd: r.cmd, output: `命令被拒绝: ${r.reason}`, status: 'rejected' })
   }
 
   // Send results back to AI for final analysis
   const resultsText = cmdResults
-    .map((r) => `命令: ${r.cmd}\n状态: ${r.status}\n输出:\n${r.output}`)
+    .map((r) => `设备: ${r.deviceName}\n命令: ${r.cmd}\n状态: ${r.status}\n输出:\n${r.output}`)
     .join('\n\n')
 
+  const deviceNamesStr = targetDevices.map((d) => d.name).join(', ')
   const followUpMessages: Array<{ role: string; content: string }> = [
     ...fullMessages,
     { role: 'assistant', content: aiReply },
     {
       role: 'user',
-      content: `以下是在设备 ${targetDevice.name} 上执行命令的结果，请分析并给出总结：\n\n${resultsText}`,
+      content: `以下是在设备 ${deviceNamesStr} 上执行命令的结果，请分析并给出总结：\n\n${resultsText}`,
     },
   ]
 
   const finalReply = await callAI(config, followUpMessages)
 
-  saveChatMessage('user', messages[messages.length - 1]?.content || '', deviceId || null)
-  saveChatMessage('assistant', finalReply, deviceId || null)
+  saveChatMessage('user', messages[messages.length - 1]?.content || '', null, sessionId)
+  saveChatMessage('assistant', finalReply, null, sessionId)
 
   return finalReply
 }

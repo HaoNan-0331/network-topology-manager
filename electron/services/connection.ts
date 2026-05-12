@@ -2,6 +2,7 @@ import { BrowserWindow, shell } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import net from 'net'
+import iconv from 'iconv-lite'
 import { Client, type ConnectConfig, type ClientChannel } from 'ssh2'
 import { getDeviceById, setDeviceMasterKey } from './device'
 
@@ -96,6 +97,13 @@ export function openWebSafe(url: string) {
   }
 }
 
+function decodeBuffer(data: Buffer): string {
+  // Try UTF-8 first; if it contains invalid sequences, fall back to GBK
+  const text = data.toString('utf-8')
+  if (!text.includes('\ufffd')) return text
+  return iconv.decode(data, 'gbk')
+}
+
 function connectSSH(sessionId: string, device: DeviceInfo, termWin: BrowserWindow) {
   const client = new Client()
 
@@ -104,6 +112,42 @@ function connectSSH(sessionId: string, device: DeviceInfo, termWin: BrowserWindo
     port: device.port || 22,
     username: device.username || 'root',
     readyTimeout: 10000,
+    algorithms: {
+      kex: [
+        'ecdh-sha2-nistp256',
+        'ecdh-sha2-nistp384',
+        'ecdh-sha2-nistp521',
+        'diffie-hellman-group-exchange-sha256',
+        'diffie-hellman-group14-sha256',
+        'diffie-hellman-group15-sha512',
+        'diffie-hellman-group16-sha512',
+        'diffie-hellman-group-exchange-sha1',
+        'diffie-hellman-group14-sha1',
+        'diffie-hellman-group1-sha1',
+      ],
+      cipher: [
+        'aes128-gcm@openssh.com',
+        'aes256-gcm@openssh.com',
+        'aes128-ctr',
+        'aes192-ctr',
+        'aes256-ctr',
+        'aes128-cbc',
+        'aes192-cbc',
+        'aes256-cbc',
+        '3des-cbc',
+        'blowfish-cbc',
+      ],
+      serverHostKey: [
+        'ssh-rsa',
+        'rsa-sha2-256',
+        'rsa-sha2-512',
+        'ecdsa-sha2-nistp256',
+        'ecdsa-sha2-nistp384',
+        'ecdsa-sha2-nistp521',
+        'ssh-ed25519',
+        'ssh-dss',
+      ],
+    },
   }
 
   // SSH Key auth priority
@@ -133,12 +177,12 @@ function connectSSH(sessionId: string, device: DeviceInfo, termWin: BrowserWindo
 
       stream.on('data', (data: Buffer) => {
         if (!termWin.isDestroyed()) {
-          termWin.webContents.send('terminal:data', data.toString('utf-8'))
+          termWin.webContents.send('terminal:data', decodeBuffer(data))
         }
       })
       stream.stderr.on('data', (data: Buffer) => {
         if (!termWin.isDestroyed()) {
-          termWin.webContents.send('terminal:data', data.toString('utf-8'))
+          termWin.webContents.send('terminal:data', decodeBuffer(data))
         }
       })
       stream.on('close', () => {
@@ -175,7 +219,7 @@ function connectTelnet(sessionId: string, device: DeviceInfo, termWin: BrowserWi
 
   socket.on('data', (data: Buffer) => {
     if (!termWin.isDestroyed()) {
-      termWin.webContents.send('terminal:data', data.toString('utf-8'))
+      termWin.webContents.send('terminal:data', iconv.decode(data, 'gbk'))
     }
   })
 

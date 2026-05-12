@@ -34,7 +34,7 @@ const api = {
     write: (sid: string, data: string) => ipcRenderer.invoke('connection:write', sid, data),
   },
   ai: {
-    chat: (messages: unknown[], deviceId?: string) => ipcRenderer.invoke('ai:chat', messages, deviceId),
+    chat: (messages: unknown[], deviceIds?: string[], sessionId?: string) => ipcRenderer.invoke('ai:chat', messages, deviceIds, sessionId),
     discoverTopology: (deviceIds: string[]) => ipcRenderer.invoke('ai:discoverTopology', deviceIds),
     getConfig: () => ipcRenderer.invoke('ai:getConfig'),
     saveConfig: (config: unknown) => ipcRenderer.invoke('ai:saveConfig', config),
@@ -45,6 +45,14 @@ const api = {
     confirmCommand: (execId: string, approved: boolean) => ipcRenderer.invoke('ai:confirmCommand', execId, approved),
     getLogs: (limit?: number) => ipcRenderer.invoke('ai:getLogs', limit),
     getChatHistory: () => ipcRenderer.invoke('ai:getChatHistory'),
+    saveMessage: (role: string, content: string, deviceId?: string | null, sessionId?: string | null) => ipcRenderer.invoke('ai:saveMessage', role, content, deviceId, sessionId),
+    clearHistory: () => ipcRenderer.invoke('ai:clearHistory'),
+    createSession: (title: string, deviceId?: string) => ipcRenderer.invoke('ai:createSession', title, deviceId),
+    listSessions: () => ipcRenderer.invoke('ai:listSessions'),
+    getSessionMessages: (sessionId: string) => ipcRenderer.invoke('ai:getSessionMessages', sessionId),
+    deleteSession: (sessionId: string) => ipcRenderer.invoke('ai:deleteSession', sessionId),
+    updateSessionTitle: (sessionId: string, title: string) => ipcRenderer.invoke('ai:updateSessionTitle', sessionId, title),
+    getSystemLogs: (limit?: number) => ipcRenderer.invoke('ai:getSystemLogs', limit),
   },
 }
 

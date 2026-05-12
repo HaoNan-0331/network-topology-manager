@@ -7,6 +7,8 @@ export interface TopologyNodeData {
   deviceType: DeviceType
   connectionType: ConnectionType
   ipAddress: string
+  vendor?: string
+  model?: string
 }
 
 export type TopologyNode = Node<TopologyNodeData>

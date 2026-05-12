@@ -16,10 +16,30 @@ export interface AIExecLog {
   createdAt: string
 }
 
+export interface AISystemLog {
+  id: string
+  type: string
+  status: string
+  deviceIds: string
+  deviceNames: string
+  promptText: string
+  aiResponse: string
+  parsedResult: string
+  errorMessage: string
+  createdAt: string
+}
+
 export interface ChatMessage {
   id: string
   role: string
   content: string
+  deviceId: string | null
+  createdAt: string
+}
+
+export interface ChatSession {
+  id: string
+  title: string
   deviceId: string | null
   createdAt: string
 }
@@ -56,7 +76,7 @@ export interface ElectronAPI {
     write: (sid: string, data: string) => Promise<void>
   }
   ai: {
-    chat: (messages: Array<{ role: string; content: string }>, deviceId?: string) => Promise<string>
+    chat: (messages: Array<{ role: string; content: string }>, deviceIds?: string[], sessionId?: string) => Promise<string>
     discoverTopology: (deviceIds: string[]) => Promise<{ nodes: any[]; edges: any[]; failedDevices: Array<{ deviceId: string; deviceName: string; error: string }> }>
     getConfig: () => Promise<AIConfig | null>
     saveConfig: (config: AIConfig) => Promise<void>
@@ -64,9 +84,17 @@ export interface ElectronAPI {
     saveCommandWhitelist: (list: string[]) => Promise<void>
     getExecMode: () => Promise<'confirm' | 'auto'>
     setExecMode: (mode: string, password: string) => Promise<{ success: boolean; error?: string }>
-    confirmCommand: (execId: string, approved: boolean) => Promise<void>
+    confirmCommand: (execId: string, approved: boolean) => Promise<string>
     getLogs: (limit?: number) => Promise<AIExecLog[]>
     getChatHistory: () => Promise<ChatMessage[]>
+    saveMessage: (role: string, content: string, deviceId?: string | null, sessionId?: string | null) => Promise<void>
+    clearHistory: () => Promise<void>
+    createSession: (title: string, deviceId?: string) => Promise<ChatSession>
+    listSessions: () => Promise<ChatSession[]>
+    getSessionMessages: (sessionId: string) => Promise<ChatMessage[]>
+    deleteSession: (sessionId: string) => Promise<void>
+    updateSessionTitle: (sessionId: string, title: string) => Promise<void>
+    getSystemLogs: (limit?: number) => Promise<AISystemLog[]>
   }
 }
 

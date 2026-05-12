@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Button, Select, Space, Modal, Input, Popconfirm, message } from 'antd'
+import { Button, Select, Modal, Input, Popconfirm, message } from 'antd'
 import {
   PlusOutlined,
   SaveOutlined,
@@ -67,56 +67,72 @@ export default function TopologyToolbar({
   }
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        padding: '8px 16px',
-        borderBottom: '1px solid #f0f0f0',
-        background: '#fff',
-        gap: 8,
-      }}
-    >
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '8px 12px' }}>
+      <div
+        style={{
+          fontSize: 11,
+          color: '#999',
+          textTransform: 'uppercase',
+          letterSpacing: 1,
+          marginBottom: 2,
+        }}
+      >
+        拓扑操作
+      </div>
       <Select
-        style={{ minWidth: 200 }}
+        style={{ width: '100%' }}
         placeholder="选择拓扑"
         allowClear
         value={currentTopologyId}
         onChange={onTopologyChange}
         options={topologies.map((t) => ({ label: t.name, value: t.id }))}
+        size="small"
       />
-      <Space>
-        <Button icon={<PlusOutlined />} onClick={() => setNewModalOpen(true)}>
-          新建
-        </Button>
+      <Button
+        block
+        size="small"
+        icon={<PlusOutlined />}
+        onClick={() => setNewModalOpen(true)}
+      >
+        新建
+      </Button>
+      <Button
+        block
+        size="small"
+        icon={<SaveOutlined />}
+        disabled={!currentTopologyId}
+        onClick={onSave}
+      >
+        保存
+      </Button>
+      <Popconfirm
+        title="确定删除此拓扑？"
+        onConfirm={onDelete}
+        okText="确定"
+        cancelText="取消"
+      >
         <Button
-          icon={<SaveOutlined />}
+          block
+          size="small"
+          icon={<DeleteOutlined />}
+          danger
           disabled={!currentTopologyId}
-          onClick={onSave}
         >
-          保存
+          删除
         </Button>
-        <Popconfirm
-          title="确定删除此拓扑？"
-          onConfirm={onDelete}
-          okText="确定"
-          cancelText="取消"
-        >
-          <Button icon={<DeleteOutlined />} danger disabled={!currentTopologyId}>
-            删除
-          </Button>
-        </Popconfirm>
-        <Button icon={<ImportOutlined />} onClick={handleImport}>
-          导入
-        </Button>
-        <Button
-          icon={<ExportOutlined />}
-          disabled={!currentTopologyId}
-          onClick={onExport}
-        >
-          导出
-        </Button>
-      </Space>
+      </Popconfirm>
+      <Button block size="small" icon={<ImportOutlined />} onClick={handleImport}>
+        导入
+      </Button>
+      <Button
+        block
+        size="small"
+        icon={<ExportOutlined />}
+        disabled={!currentTopologyId}
+        onClick={onExport}
+      >
+        导出
+      </Button>
 
       <Modal
         title="新建拓扑"

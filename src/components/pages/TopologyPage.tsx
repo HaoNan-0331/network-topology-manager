@@ -3,9 +3,10 @@ import { useNodesState, useEdgesState, addEdge, type Connection } from 'reactflo
 import { Button, message } from 'antd'
 import { PlusOutlined, SearchOutlined } from '@ant-design/icons'
 import TopologyCanvas from '@/components/topology/TopologyCanvas'
-import TopologyToolbar from '@/components/topology/TopologyToolbar'
 import AddDeviceModal from '@/components/topology/AddDeviceModal'
 import DiscoveryPanel from '@/components/topology/DiscoveryPanel'
+import EditNodeModal from '@/components/topology/EditNodeModal'
+import { useTopologyToolbarStore } from '@/stores/topologyToolbarStore'
 import type { TopologyNode, TopologyNodeData, TopologyEdgeData, TopologyEdge } from '@/types/topology'
 import type { ConnectionType } from '@/types/device'
 
@@ -16,8 +17,13 @@ export default function TopologyPage() {
   const [edges, setEdges, onEdgesChange] = useEdgesState<TopologyEdgeData>([])
   const [addDeviceOpen, setAddDeviceOpen] = useState(false)
   const [discoveryOpen, setDiscoveryOpen] = useState(false)
+  const [editModalOpen, setEditModalOpen] = useState(false)
+  const [editingNodeData, setEditingNodeData] = useState<TopologyNodeData | null>(null)
+  const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(new Set())
+  const [selectedEdgeIds, setSelectedEdgeIds] = useState<Set<string>>(new Set())
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isLoadingRef = useRef(false)
+  const setToolbarState = useTopologyToolbarStore((s) => s.setToolbar)
 
   const fetchTopologies = useCallback(async () => {
     const list = await window.api.topology.list()
@@ -129,6 +135,21 @@ export default function TopologyPage() {
     }
   }, [currentTopologyId, topologies])
 
+  // Sync toolbar state to sidebar store
+  useEffect(() => {
+    setToolbarState({
+      topologies,
+      currentTopologyId,
+      onTopologyChange: handleTopologyChange,
+      onNew: handleNew,
+      onSave: saveTopology,
+      onDelete: handleDelete,
+      onImport: handleImport,
+      onExport: handleExport,
+    })
+    return () => setToolbarState(null)
+  }, [topologies, currentTopologyId, handleTopologyChange, handleNew, saveTopology, handleDelete, handleImport, handleExport, setToolbarState])
+
   const handleConnect = useCallback(
     (connection: Connection, sourceInterface: string, targetInterface: string) => {
       const edgeData: TopologyEdgeData = { sourceInterface, targetInterface }
@@ -192,48 +213,73 @@ export default function TopologyPage() {
     }
   }, [])
 
+  const handleDeleteSelected = useCallback(() => {
+    setNodes((nds) => nds.filter((n) => !selectedNodeIds.has(n.id)))
+    setEdges((eds) => eds.filter((e) => !selectedEdgeIds.has(e.id) && !selectedNodeIds.has(e.source) && !selectedNodeIds.has(e.target)))
+    setSelectedNodeIds(new Set())
+    setSelectedEdgeIds(new Set())
+  }, [selectedNodeIds, selectedEdgeIds, setNodes, setEdges])
+
+  const handleEditSelectedNode = useCallback(() => {
+    const nodeId = [...selectedNodeIds][0]
+    if (!nodeId) return
+    const node = nodes.find((n) => n.id === nodeId)
+    if (!node) return
+    setEditingNodeData(node.data)
+    setEditModalOpen(true)
+  }, [selectedNodeIds, nodes])
+
+  const handleCanvasSelectionChange = useCallback((nodeIds: string[], edgeIds: string[]) => {
+    setSelectedNodeIds(new Set(nodeIds))
+    setSelectedEdgeIds(new Set(edgeIds))
+  }, [])
+
+  const handleEditConfirm = useCallback(
+    (updatedData: TopologyNodeData) => {
+      setNodes((nds) =>
+        nds.map((n) =>
+          n.data.deviceId === updatedData.deviceId ? { ...n, data: updatedData } : n
+        )
+      )
+      setEditModalOpen(false)
+      setEditingNodeData(null)
+    },
+    [setNodes]
+  )
+
   return (
-    <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <TopologyToolbar
-        topologies={topologies}
-        currentTopologyId={currentTopologyId}
-        onTopologyChange={handleTopologyChange}
-        onNew={handleNew}
-        onSave={saveTopology}
-        onDelete={handleDelete}
-        onImport={handleImport}
-        onExport={handleExport}
+    <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+      <TopologyCanvas
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={handleConnect}
+        onNodeDoubleClick={handleNodeDoubleClick}
+        onDeleteSelected={handleDeleteSelected}
+        onEditSelectedNode={handleEditSelectedNode}
+        onSelectionChange={handleCanvasSelectionChange}
       />
-      <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
-        <TopologyCanvas
-          nodes={nodes}
-          edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={handleConnect}
-          onNodeDoubleClick={handleNodeDoubleClick}
-        />
-        {currentTopologyId && (
-          <>
-            <Button
-              shape="circle"
-              icon={<SearchOutlined />}
-              size="large"
-              style={{ position: 'absolute', bottom: 24, right: 80, zIndex: 10 }}
-              onClick={() => setDiscoveryOpen(true)}
-              title="拓扑发现"
-            />
-            <Button
-              type="primary"
-              shape="circle"
-              icon={<PlusOutlined />}
-              size="large"
-              style={{ position: 'absolute', bottom: 24, right: 24, zIndex: 10 }}
-              onClick={() => setAddDeviceOpen(true)}
-            />
-          </>
-        )}
-      </div>
+      {currentTopologyId && (
+        <>
+          <Button
+            shape="circle"
+            icon={<SearchOutlined />}
+            size="large"
+            style={{ position: 'absolute', bottom: 24, right: 80, zIndex: 10 }}
+            onClick={() => setDiscoveryOpen(true)}
+            title="拓扑发现"
+          />
+          <Button
+            type="primary"
+            shape="circle"
+            icon={<PlusOutlined />}
+            size="large"
+            style={{ position: 'absolute', bottom: 24, right: 24, zIndex: 10 }}
+            onClick={() => setAddDeviceOpen(true)}
+          />
+        </>
+      )}
       <AddDeviceModal
         open={addDeviceOpen}
         existingNodes={nodes}
@@ -244,6 +290,12 @@ export default function TopologyPage() {
         open={discoveryOpen}
         onCancel={() => setDiscoveryOpen(false)}
         onConfirm={handleDiscoveryConfirm}
+      />
+      <EditNodeModal
+        open={editModalOpen}
+        data={editingNodeData}
+        onConfirm={handleEditConfirm}
+        onCancel={() => { setEditModalOpen(false); setEditingNodeData(null) }}
       />
     </div>
   )

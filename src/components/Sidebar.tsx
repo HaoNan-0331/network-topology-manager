@@ -1,24 +1,37 @@
-import { Menu } from 'antd'
-import { ApartmentOutlined, DesktopOutlined, RobotOutlined, SettingOutlined } from '@ant-design/icons'
+import { Menu, Divider } from 'antd'
+import { ApartmentOutlined, DesktopOutlined, RobotOutlined, SettingOutlined, FileSearchOutlined } from '@ant-design/icons'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { useTopologyToolbarStore } from '@/stores/topologyToolbarStore'
+import TopologyToolbar from './topology/TopologyToolbar'
 
-const items = [
+const navItems = [
   { key: '/topology', icon: <ApartmentOutlined />, label: '拓扑管理' },
   { key: '/devices', icon: <DesktopOutlined />, label: '设备管理' },
   { key: '/ai', icon: <RobotOutlined />, label: 'AI 助手' },
+  { key: '/logs', icon: <FileSearchOutlined />, label: '日志审计' },
   { key: '/settings', icon: <SettingOutlined />, label: '系统设置' },
 ]
 
 export default function Sidebar() {
   const navigate = useNavigate()
   const location = useLocation()
+  const toolbarState = useTopologyToolbarStore((s) => s.toolbar)
+
   return (
-    <Menu
-      mode="inline"
-      selectedKeys={[location.pathname]}
-      items={items}
-      onClick={({ key }) => navigate(key)}
-      style={{ height: '100%', borderRight: 0 }}
-    />
+    <>
+      <Menu
+        mode="inline"
+        selectedKeys={[location.pathname]}
+        items={navItems}
+        onClick={({ key }) => navigate(key)}
+        style={{ borderRight: 0 }}
+      />
+      {toolbarState && location.pathname === '/topology' && (
+        <>
+          <Divider style={{ margin: '4px 0' }} />
+          <TopologyToolbar {...toolbarState} />
+        </>
+      )}
+    </>
   )
 }

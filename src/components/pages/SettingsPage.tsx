@@ -3,7 +3,6 @@ import { Card, Form, Input, Button, Select, message, Divider, Space, Spin } from
 import { LogoutOutlined } from '@ant-design/icons'
 import { useAuthStore } from '../../stores/authStore'
 import CommandWhitelistEditor from '../settings/CommandWhitelistEditor'
-import AIExecLogViewer from '../settings/AIExecLogViewer'
 import ExecModeSwitch from '../settings/ExecModeSwitch'
 import type { AIConfig } from '../../types/electron'
 
@@ -78,7 +77,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div style={{ maxWidth: 900 }}>
+    <div style={{ maxWidth: 900, padding: 16 }}>
       {/* AI Model Config */}
       <Card title="AI 模型配置" size="small" style={{ marginBottom: 16 }}>
         <Form
@@ -114,11 +113,6 @@ export default function SettingsPage() {
       {/* Exec Mode */}
       <div style={{ marginBottom: 16 }}>
         <ExecModeSwitch />
-      </div>
-
-      {/* AI Exec Logs */}
-      <div style={{ marginBottom: 16 }}>
-        <AIExecLogViewer />
       </div>
 
       {/* Logout */}

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Select, Input, Button, Spin, Typography, message, Modal, Tag } from 'antd'
-import { SendOutlined, RobotOutlined, UserOutlined, ExclamationCircleOutlined } from '@ant-design/icons'
+import { SendOutlined, RobotOutlined, UserOutlined, ExclamationCircleOutlined, PlusOutlined, DeleteOutlined } from '@ant-design/icons'
+import type { ChatSession, ChatMessage } from '@/types/electron'
 
 const { Title } = Typography
 const { TextArea } = Input
@@ -21,14 +22,16 @@ interface ChatMsg {
 interface ConfirmData {
   type: 'confirm_required'
   execId: string
-  deviceName: string
-  command: string
+  commands: Array<{ deviceName: string; command: string }>
+  rejectedCommands?: Array<{ command: string; reason: string }>
   aiExplanation: string
 }
 
 export default function AIPage() {
   const [devices, setDevices] = useState<DeviceOption[]>([])
-  const [selectedDevice, setSelectedDevice] = useState<string | undefined>(undefined)
+  const [selectedDevices, setSelectedDevices] = useState<string[]>([])
+  const [sessions, setSessions] = useState<ChatSession[]>([])
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
   const [messages, setMessages] = useState<ChatMsg[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -47,9 +50,8 @@ export default function AIPage() {
 
   async function loadData() {
     try {
-      const [devs, history, config] = await Promise.all([
+      const [devs, config] = await Promise.all([
         window.api.device.list(),
-        window.api.ai.getChatHistory(),
         window.api.ai.getConfig(),
       ])
       setDevices(
@@ -57,21 +59,64 @@ export default function AIPage() {
           .filter((d: any) => d.connectionType === 'ssh' || d.connectionType === 'telnet')
           .map((d: any) => ({ id: d.id, name: d.name, connectionType: d.connectionType }))
       )
-      if (history.length > 0) {
-        setMessages(
-          history.map((h: any) => ({ id: h.id, role: h.role, content: h.content, createdAt: h.createdAt }))
-        )
-      }
       setHasConfig(!!config && !!config.apiKey)
+      if (config) {
+        await loadSessions()
+      }
     } catch {
       // ignore
     }
     setConfigLoading(false)
   }
 
+  async function loadSessions() {
+    const list = await window.api.ai.listSessions()
+    setSessions(list)
+    if (!currentSessionId) {
+      if (list.length > 0) {
+        // Load most recent session
+        await handleSelectSession(list[0].id)
+      } else {
+        // No sessions exist yet, create the first one
+        await handleNewSession()
+      }
+    }
+  }
+
+  async function handleNewSession() {
+    const session = await window.api.ai.createSession('新对话')
+    setSessions((prev) => [session, ...prev])
+    setCurrentSessionId(session.id)
+    setMessages([])
+    setPendingConfirm(null)
+    return session
+  }
+
+  async function handleSelectSession(sessionId: string) {
+    if (sessionId === currentSessionId) return
+    setCurrentSessionId(sessionId)
+    setPendingConfirm(null)
+    const msgs = await window.api.ai.getSessionMessages(sessionId)
+    setMessages(msgs.map((m: ChatMessage) => ({ id: m.id, role: m.role as 'user' | 'assistant', content: m.content, createdAt: m.createdAt })))
+  }
+
+  async function handleDeleteSession(sessionId: string) {
+    await window.api.ai.deleteSession(sessionId)
+    setSessions((prev) => prev.filter((s) => s.id !== sessionId))
+    if (sessionId === currentSessionId) {
+      // Current session deleted, create new one
+      const remaining = sessions.filter((s) => s.id !== sessionId)
+      if (remaining.length > 0) {
+        await handleSelectSession(remaining[0].id)
+      } else {
+        await handleNewSession()
+      }
+    }
+  }
+
   async function handleSend() {
     const text = input.trim()
-    if (!text || loading) return
+    if (!text || loading || !currentSessionId) return
 
     const userMsg: ChatMsg = { role: 'user', content: text }
     const newMessages = [...messages, userMsg]
@@ -82,7 +127,8 @@ export default function AIPage() {
     try {
       const reply = await window.api.ai.chat(
         newMessages.map((m) => ({ role: m.role, content: m.content })),
-        selectedDevice
+        selectedDevices.length > 0 ? selectedDevices : undefined,
+        currentSessionId
       )
 
       // Check if reply is a confirm_required response
@@ -98,30 +144,27 @@ export default function AIPage() {
       }
 
       setMessages([...newMessages, { role: 'assistant', content: reply }])
+
+      // Auto title: update session title from first user message
+      if (messages.length === 0) {
+        const title = text.length > 20 ? text.substring(0, 20) + '...' : text
+        window.api.ai.updateSessionTitle(currentSessionId, title)
+        setSessions((prev) => prev.map((s) => s.id === currentSessionId ? { ...s, title } : s))
+      }
     } catch (e: any) {
-      setMessages([...newMessages, { role: 'assistant', content: `错误: ${e.message}` }])
+      const errMsg = `错误: ${e.message}`
+      setMessages([...newMessages, { role: 'assistant', content: errMsg }])
     }
     setLoading(false)
   }
 
   async function handleConfirm(approved: boolean) {
-    if (!pendingConfirm) return
+    if (!pendingConfirm || !currentSessionId) return
     setLoading(true)
     try {
-      const reply = await window.api.ai.confirmCommand(pendingConfirm.execId, approved)
-      // After confirmation, the AI reply comes back as the result
-      // Check if it's already a final string
-      if (approved) {
-        setMessages((prev) => [
-          ...prev,
-          { role: 'assistant', content: pendingConfirm.aiExplanation + '\n\n命令执行结果:\n' + reply },
-        ])
-      } else {
-        setMessages((prev) => [
-          ...prev,
-          { role: 'assistant', content: '已拒绝执行命令: ' + pendingConfirm.command },
-        ])
-      }
+      const result = await window.api.ai.confirmCommand(pendingConfirm.execId, approved)
+      // confirmCommand now returns AI analysis (approved) or rejection message
+      setMessages((prev) => [...prev, { role: 'assistant', content: result }])
     } catch (e: any) {
       message.error(e.message)
     }
@@ -145,48 +188,93 @@ export default function AIPage() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* Header with device selector */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <Title level={4} style={{ margin: 0 }}>AI 助手</Title>
-        <Select
-          allowClear
-          placeholder="选择目标设备（可选）"
-          style={{ width: 280 }}
-          value={selectedDevice}
-          onChange={setSelectedDevice}
-          options={devices.map((d) => ({ value: d.id, label: `${d.name} (${d.connectionType.toUpperCase()})` }))}
-        />
+    <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
+      {/* Left: Session list */}
+      <div style={{
+        width: 220,
+        borderRight: '1px solid #f0f0f0',
+        display: 'flex',
+        flexDirection: 'column',
+        flexShrink: 0,
+      }}>
+        <div style={{ padding: '8px 12px', borderBottom: '1px solid #f0f0f0' }}>
+          <Button block icon={<PlusOutlined />} onClick={handleNewSession}>
+            新建会话
+          </Button>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+          {sessions.map((session) => (
+            <div
+              key={session.id}
+              onClick={() => handleSelectSession(session.id)}
+              style={{
+                padding: '8px 12px',
+                cursor: 'pointer',
+                background: session.id === currentSessionId ? '#e6f7ff' : 'transparent',
+                borderLeft: session.id === currentSessionId ? '3px solid #1890ff' : '3px solid transparent',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                fontSize: 13,
+                color: '#333',
+              }}
+              onMouseEnter={(e) => { if (session.id !== currentSessionId) (e.currentTarget.style.background = '#fafafa') }}
+              onMouseLeave={(e) => { if (session.id !== currentSessionId) (e.currentTarget.style.background = 'transparent') }}
+            >
+              <div style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {session.title}
+              </div>
+              <DeleteOutlined
+                style={{ color: '#999', fontSize: 12, marginLeft: 4, flexShrink: 0 }}
+                onClick={(e) => { e.stopPropagation(); handleDeleteSession(session.id) }}
+              />
+            </div>
+          ))}
+        </div>
       </div>
 
-      {/* Chat messages */}
-      <div
-        style={{
+      {/* Right: Chat area */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: 16, minWidth: 0 }}>
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <Title level={4} style={{ margin: 0 }}>AI 助手</Title>
+          <Select
+            mode="multiple"
+            allowClear
+            placeholder="选择目标设备（可多选）"
+            style={{ minWidth: 280, maxWidth: 400 }}
+            value={selectedDevices}
+            onChange={setSelectedDevices}
+            options={devices.map((d) => ({ value: d.id, label: `${d.name} (${d.connectionType.toUpperCase()})` }))}
+            maxTagCount="responsive"
+          />
+        </div>
+
+        {/* Chat messages */}
+        <div style={{
           flex: 1,
           overflowY: 'auto',
           border: '1px solid #f0f0f0',
           borderRadius: 8,
           padding: 16,
           background: '#fafafa',
-        }}
-      >
-        {messages.length === 0 && (
-          <div style={{ textAlign: 'center', color: '#bfbfbf', paddingTop: 60 }}>
-            <RobotOutlined style={{ fontSize: 40, marginBottom: 8 }} />
-            <div>向 AI 助手提问，选择设备后可查询设备信息</div>
-          </div>
-        )}
-        {messages.map((msg, idx) => (
-          <div
-            key={msg.id || idx}
-            style={{
-              display: 'flex',
-              justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
-              marginBottom: 12,
-            }}
-          >
+        }}>
+          {messages.length === 0 && (
+            <div style={{ textAlign: 'center', color: '#bfbfbf', paddingTop: 60 }}>
+              <RobotOutlined style={{ fontSize: 40, marginBottom: 8 }} />
+              <div>向 AI 助手提问，选择设备后可查询设备信息</div>
+            </div>
+          )}
+          {messages.map((msg, idx) => (
             <div
+              key={msg.id || idx}
               style={{
+                display: 'flex',
+                justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                marginBottom: 12,
+              }}
+            >
+              <div style={{
                 maxWidth: '70%',
                 padding: '8px 12px',
                 borderRadius: 8,
@@ -197,58 +285,58 @@ export default function AIPage() {
                 wordBreak: 'break-word',
                 fontSize: 14,
                 lineHeight: 1.6,
-              }}
-            >
-              <div style={{ marginBottom: 4 }}>
-                {msg.role === 'user' ? <UserOutlined /> : <RobotOutlined />}
-                <span style={{ marginLeft: 4, fontWeight: 500 }}>
-                  {msg.role === 'user' ? '我' : 'AI'}
-                </span>
+              }}>
+                <div style={{ marginBottom: 4 }}>
+                  {msg.role === 'user' ? <UserOutlined /> : <RobotOutlined />}
+                  <span style={{ marginLeft: 4, fontWeight: 500 }}>
+                    {msg.role === 'user' ? '我' : 'AI'}
+                  </span>
+                </div>
+                {msg.content}
               </div>
-              {msg.content}
             </div>
-          </div>
-        ))}
-        {loading && (
-          <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: 12 }}>
-            <div style={{ padding: '8px 12px', background: '#fff', borderRadius: 8, border: '1px solid #e8e8e8' }}>
-              <Spin size="small" /> <span style={{ marginLeft: 8, color: '#999' }}>思考中...</span>
+          ))}
+          {loading && (
+            <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: 12 }}>
+              <div style={{ padding: '8px 12px', background: '#fff', borderRadius: 8, border: '1px solid #e8e8e8' }}>
+                <Spin size="small" /> <span style={{ marginLeft: 8, color: '#999' }}>思考中...</span>
+              </div>
             </div>
-          </div>
-        )}
-        <div ref={chatEndRef} />
-      </div>
+          )}
+          <div ref={chatEndRef} />
+        </div>
 
-      {/* Input area */}
-      <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
-        <TextArea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"
-          autoSize={{ minRows: 1, maxRows: 4 }}
-          onPressEnter={(e) => {
-            if (!e.shiftKey) {
-              e.preventDefault()
-              handleSend()
-            }
-          }}
-          disabled={loading}
-        />
-        <Button
-          type="primary"
-          icon={<SendOutlined />}
-          onClick={handleSend}
-          loading={loading}
-          disabled={!input.trim()}
-        >
-          发送
-        </Button>
+        {/* Input area */}
+        <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+          <TextArea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"
+            autoSize={{ minRows: 1, maxRows: 4 }}
+            onPressEnter={(e) => {
+              if (!e.shiftKey) {
+                e.preventDefault()
+                handleSend()
+              }
+            }}
+            disabled={loading}
+          />
+          <Button
+            type="primary"
+            icon={<SendOutlined />}
+            onClick={handleSend}
+            loading={loading}
+            disabled={!input.trim()}
+          >
+            发送
+          </Button>
+        </div>
       </div>
 
       {/* Confirm modal */}
       <Modal
         open={!!pendingConfirm}
-        title="命令执行确认"
+        title={`命令执行确认（${pendingConfirm?.commands?.length || 0} 条命令）`}
         onCancel={() => handleConfirm(false)}
         footer={[
           <Button key="reject" danger onClick={() => handleConfirm(false)}>
@@ -261,18 +349,30 @@ export default function AIPage() {
       >
         {pendingConfirm && (
           <div>
-            <p>
-              <strong>目标设备:</strong> {pendingConfirm.deviceName}
-            </p>
-            <p>
-              <strong>待执行命令:</strong>{' '}
-              <Tag color="blue" style={{ fontSize: 13 }}>
-                {pendingConfirm.command}
-              </Tag>
-            </p>
-            <div style={{ background: '#f5f5f5', padding: 12, borderRadius: 4, marginTop: 8 }}>
+            <p><strong>待执行命令:</strong></p>
+            {pendingConfirm.commands.map((cmd, i) => (
+              <div key={i} style={{ marginBottom: 6 }}>
+                <Tag color="blue" style={{ fontSize: 13 }}>
+                  [{cmd.deviceName}] {cmd.command}
+                </Tag>
+              </div>
+            ))}
+            {pendingConfirm.rejectedCommands && pendingConfirm.rejectedCommands.length > 0 && (
+              <>
+                <p style={{ marginTop: 8 }}><strong>已拒绝命令:</strong></p>
+                {pendingConfirm.rejectedCommands.map((r, i) => (
+                  <div key={i} style={{ marginBottom: 4 }}>
+                    <Tag color="red" style={{ fontSize: 13 }}>{r.command}</Tag>
+                    <span style={{ color: '#999', fontSize: 12 }}> {r.reason}</span>
+                  </div>
+                ))}
+              </>
+            )}
+            <div style={{ background: '#f5f5f5', padding: 12, borderRadius: 4, marginTop: 12 }}>
               <strong>AI 说明:</strong>
-              <div style={{ marginTop: 4, whiteSpace: 'pre-wrap' }}>{pendingConfirm.aiExplanation}</div>
+              <div style={{ marginTop: 4, whiteSpace: 'pre-wrap', maxHeight: 200, overflowY: 'auto', fontSize: 13 }}>
+                {pendingConfirm.aiExplanation}
+              </div>
             </div>
           </div>
         )}

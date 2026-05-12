@@ -70,6 +70,27 @@ export function createTables() {
       role TEXT NOT NULL,
       content_enc TEXT NOT NULL,
       device_id TEXT,
+      session_id TEXT,
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS chat_sessions (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      device_id TEXT,
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS ai_system_logs (
+      id TEXT PRIMARY KEY,
+      type TEXT NOT NULL DEFAULT 'discovery' CHECK(type IN ('discovery')),
+      status TEXT NOT NULL CHECK(status IN ('success','failed')),
+      device_ids TEXT,
+      device_names TEXT,
+      prompt_text TEXT,
+      ai_response TEXT,
+      parsed_result TEXT,
+      error_message TEXT,
       created_at TEXT DEFAULT (datetime('now','localtime'))
     );
 
@@ -83,4 +104,11 @@ export function createTables() {
       ('w7', 'traceroute'),
       ('w8', 'terminal');
   `)
+
+  // Migrate: add session_id column to existing chat_history table
+  const db = getDatabase()
+  const cols = db.prepare("PRAGMA table_info(chat_history)").all() as any[]
+  if (!cols.some((c) => c.name === 'session_id')) {
+    db.exec('ALTER TABLE chat_history ADD COLUMN session_id TEXT')
+  }
 }

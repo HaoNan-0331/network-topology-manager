@@ -7,8 +7,9 @@ import { generateCaptcha, login, isFirstRun, initAdmin } from './services/auth'
 import { setDeviceMasterKey, listDevices, createDevice, updateDevice, deleteDevice, getDeviceById } from './services/device'
 import { setTopologyMasterKey, listTopologies, getTopologyById, createTopology, updateTopology, deleteTopology, exportTopology, importTopology } from './services/topology'
 import { setConnectionMasterKey, openTerminal, openWebSafe, writeToSession, writeByWebContentsId, disconnectSession } from './services/connection'
-import { setAiMasterKey, chat, getAiConfigMasked, saveAiConfig, getCommandWhitelist, saveCommandWhitelist, getExecMode, setExecMode, confirmCommand, getAiLogs, getChatHistory } from './services/ai'
+import { setAiMasterKey, chat, getAiConfigMasked, saveAiConfig, getCommandWhitelist, saveCommandWhitelist, getExecMode, setExecMode, confirmCommand, getAiLogs, getChatHistory, saveChatMessage as aiSaveChatMessage, clearChatHistory, createSession, listSessions, getSessionMessages, deleteSession, updateSessionTitle } from './services/ai'
 import { discoverTopology } from './services/discovery'
+import { getSystemLogs } from './services/systemLog'
 
 let mainWindow: BrowserWindow | null = null
 let masterKey: string
@@ -16,6 +17,7 @@ let masterKey: string
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400, height: 900, minWidth: 1024, minHeight: 768,
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -27,7 +29,7 @@ function createWindow() {
 
   if (process.env.NODE_ENV === 'development') {
     mainWindow.loadURL('http://localhost:5173')
-    mainWindow.webContents.openDevTools()
+    mainWindow.webContents.openDevTools({ mode: 'detach' })
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
   }
@@ -78,7 +80,7 @@ app.whenReady().then(() => {
   ipcMain.handle('terminal:write', (e, data) => writeByWebContentsId(e.sender.id, data))
 
   // AI IPC
-  ipcMain.handle('ai:chat', (_e, messages, deviceId) => chat(messages, deviceId))
+  ipcMain.handle('ai:chat', (_e, messages, deviceIds, sessionId) => chat(messages, deviceIds, sessionId))
   ipcMain.handle('ai:getConfig', () => getAiConfigMasked())
   ipcMain.handle('ai:saveConfig', (_e, config) => saveAiConfig(config))
   ipcMain.handle('ai:getCommandWhitelist', () => getCommandWhitelist())
@@ -88,7 +90,15 @@ app.whenReady().then(() => {
   ipcMain.handle('ai:confirmCommand', (_e, execId, approved) => confirmCommand(execId, approved))
   ipcMain.handle('ai:getLogs', (_e, limit) => getAiLogs(limit))
   ipcMain.handle('ai:getChatHistory', () => getChatHistory())
+  ipcMain.handle('ai:saveMessage', (_e, role, content, deviceId, sessionId) => aiSaveChatMessage(role, content, deviceId, sessionId))
+  ipcMain.handle('ai:clearHistory', () => clearChatHistory())
+  ipcMain.handle('ai:createSession', (_e, title, deviceId) => createSession(title, deviceId))
+  ipcMain.handle('ai:listSessions', () => listSessions())
+  ipcMain.handle('ai:getSessionMessages', (_e, sessionId) => getSessionMessages(sessionId))
+  ipcMain.handle('ai:deleteSession', (_e, sessionId) => deleteSession(sessionId))
+  ipcMain.handle('ai:updateSessionTitle', (_e, sessionId, title) => updateSessionTitle(sessionId, title))
   ipcMain.handle('ai:discoverTopology', (_e, deviceIds) => discoverTopology(deviceIds))
+  ipcMain.handle('ai:getSystemLogs', (_e, limit) => getSystemLogs(limit))
 
   createWindow()
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })

@@ -44,7 +44,7 @@ export default function DevicesPage() {
   }
 
   return (
-    <div>
+    <div style={{ padding: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
         <Title level={4} style={{ margin: 0 }}>设备管理</Title>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditing(null); setFormOpen(true) }}>添加设备</Button>

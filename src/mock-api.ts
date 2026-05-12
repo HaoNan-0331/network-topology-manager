@@ -15,6 +15,7 @@ if (!(window as any).api) {
   let commandWhitelist = load<string[]>('whitelist', ['display', 'show', 'enable', 'system-view', 'quit', 'ping', 'traceroute', 'terminal'])
   let execLogs = load<any[]>('execLogs', [])
   let chatHistory = load<any[]>('chatHistory', [])
+  let systemLogs = load<any[]>('systemLogs', [])
   let aiConfig = load<any>('aiConfig', null)
   let execMode = load<string>('execMode', 'confirm')
   let adminInitialized = load<boolean>('adminInit', false)
@@ -126,9 +127,17 @@ if (!(window as any).api) {
       saveCommandWhitelist: async (list: string[]) => { commandWhitelist = [...list]; save('whitelist', commandWhitelist); return { success: true } },
       getExecMode: async () => execMode,
       setExecMode: async (mode: string, _password: string) => { execMode = mode; save('execMode', execMode); return { success: true } },
-      confirmCommand: async (_execId: string, _approved: boolean) => ({ success: true }),
+      confirmCommand: async (_execId: string, _approved: boolean) => '命令已执行（模拟）',
       getLogs: async (_limit?: number) => [...execLogs],
       getChatHistory: async () => [...chatHistory],
+      saveMessage: async (role: string, content: string, _deviceId?: string | null) => { chatHistory.push({ id: Date.now().toString(), role, content, deviceId: _deviceId || null, createdAt: new Date().toISOString() }); save('chatHistory', chatHistory) },
+      clearHistory: async () => { chatHistory = []; save('chatHistory', chatHistory) },
+      createSession: async (title: string) => ({ id: 's-' + Date.now(), title, deviceId: null, createdAt: new Date().toISOString() }),
+      listSessions: async () => [],
+      getSessionMessages: async (_sessionId: string) => [],
+      deleteSession: async (_sessionId: string) => {},
+      updateSessionTitle: async (_sessionId: string, _title: string) => {},
+      getSystemLogs: async (_limit?: number) => [...systemLogs],
     },
   }
 }

@@ -12,6 +12,7 @@ import type { TopologyNode, TopologyEdge, TopologyNodeData } from '@/types/topol
 import DeviceNode from './DeviceNode'
 import EdgeWithInterfaces from './EdgeWithInterfaces'
 import ConnectionModal from './ConnectionModal'
+import SelectionToolbar from './SelectionToolbar'
 
 const nodeTypes = { deviceNode: DeviceNode }
 const edgeTypes = { edgeWithInterfaces: EdgeWithInterfaces }
@@ -23,6 +24,9 @@ interface TopologyCanvasProps {
   onEdgesChange: OnEdgesChange
   onConnect?: (connection: Connection, sourceInterface: string, targetInterface: string) => void
   onNodeDoubleClick?: (nodeId: string, data: TopologyNodeData) => void
+  onDeleteSelected?: () => void
+  onEditSelectedNode?: () => void
+  onSelectionChange?: (nodeIds: string[], edgeIds: string[]) => void
 }
 
 export default function TopologyCanvas({
@@ -32,8 +36,13 @@ export default function TopologyCanvas({
   onEdgesChange,
   onConnect,
   onNodeDoubleClick,
+  onDeleteSelected,
+  onEditSelectedNode,
+  onSelectionChange,
 }: TopologyCanvasProps) {
   const [modalOpen, setModalOpen] = useState(false)
+  const [selectedNodes, setSelectedNodes] = useState<TopologyNode[]>([])
+  const [selectedEdges, setSelectedEdges] = useState<TopologyEdge[]>([])
   const pendingConnection = useRef<Connection | null>(null)
 
   const handleConnect = useCallback((connection: Connection) => {
@@ -57,6 +66,15 @@ export default function TopologyCanvas({
     setModalOpen(false)
   }, [])
 
+  const handleSelectionChange = useCallback(
+    ({ nodes: selNodes, edges: selEdges }: { nodes: TopologyNode[]; edges: TopologyEdge[] }) => {
+      setSelectedNodes(selNodes)
+      setSelectedEdges(selEdges)
+      onSelectionChange?.(selNodes.map((n) => n.id), selEdges.map((e) => e.id))
+    },
+    [onSelectionChange]
+  )
+
   const sourceDeviceName = nodes.find((n) => n.id === pendingConnection.current?.source)?.data?.deviceName
   const targetDeviceName = nodes.find((n) => n.id === pendingConnection.current?.target)?.data?.deviceName
 
@@ -71,6 +89,7 @@ export default function TopologyCanvas({
         onNodeDoubleClick={(_event, node) => {
           onNodeDoubleClick?.(node.id, node.data)
         }}
+        onSelectionChange={handleSelectionChange}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         fitView
@@ -85,6 +104,13 @@ export default function TopologyCanvas({
           nodeBorderRadius={8}
         />
         <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
+        <SelectionToolbar
+          selectedNodes={selectedNodes}
+          selectedEdges={selectedEdges}
+          allNodes={nodes}
+          onDelete={onDeleteSelected || (() => {})}
+          onEdit={onEditSelectedNode || (() => {})}
+        />
       </ReactFlow>
       <ConnectionModal
         open={modalOpen}

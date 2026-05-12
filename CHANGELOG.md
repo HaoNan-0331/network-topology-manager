@@ -2,6 +2,24 @@
 
 ## 2026-05-10
 
+### 布局重构：工具栏移入侧边栏
+- **TopologyToolbar 移入侧边栏**：将顶部水平工具栏改为垂直布局，集成到左侧菜单栏下方（通过 zustand store 桥接状态）
+- **新增 `topologyToolbarStore.ts`**：zustand store 跨组件共享拓扑工具栏状态
+- **MainLayout**：Content 移除 padding（改为各页面自行管理），侧边栏增加 `overflow: auto`
+- **TopologyPage**：移除顶部 TopologyToolbar 渲染，画布直接占满内容区
+- **Sidebar**：在导航菜单下方渲染拓扑操作面板（选择拓扑/新建/保存/删除/导入/导出）
+- **Electron 窗口**：`autoHideMenuBar: true` 隐藏菜单栏，DevTools 改为 `mode: 'detach'` 独立窗口
+- **其他页面**：DevicesPage/AIPage/SettingsPage 各自添加 `padding: 16`
+
+### 拓扑画布 UX 改进
+- **选中工具栏**：`SelectionToolbar.tsx` 选中节点显示"编辑属性"+"删除"按钮，选中连线仅显示"删除"按钮，使用 React Flow `useStore` 计算视口定位
+- **编辑节点属性**：`EditNodeModal.tsx` 弹窗支持编辑 deviceName/ipAddress/deviceType/vendor/model
+- **连线标签中点显示**：`EdgeWithInterfaces.tsx` 使用 `getBezierPath` 的 `labelX`/`labelY` 在连线中点显示接口标签（格式：`源接口 — 目标接口`）
+- **TopologyNodeData 扩展**：新增 `vendor?` 和 `model?` 字段
+- **AddDeviceModal**：创建节点时携带 vendor/model 字段
+- **TopologyCanvas**：集成 `onSelectionChange` 选中追踪和 SelectionToolbar
+- **TopologyPage**：添加删除选中、编辑节点属性、选中状态同步
+
 ### 增强
 - **Mock AI 调用真实接口**：`mock-api.ts` 的 `ai.chat` 直接调用 AI API，通过 Vite proxy 解决 CORS
 - **Vite 代理配置**：`vite.config.ts` 添加 `/proxy/ai` 代理，浏览器模式可正常使用 AI 功能

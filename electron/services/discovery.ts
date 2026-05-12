@@ -3,6 +3,7 @@ import { getAiConfig, callAI, getDeviceByIdInternal, executeCommandOnDevice } fr
 import { getCommandWhitelist } from './ai'
 import { isCommandAllowed } from './commandSafety'
 import { detectVendor, getDiscoveryCommands, type Vendor } from './vendor-commands'
+import { createSystemLog } from './systemLog'
 
 export interface DiscoveryFailedDevice {
   deviceId: string
@@ -139,7 +140,24 @@ async function discoverTopologyInner(deviceIds: string[]): Promise<DiscoveryResu
     { role: 'user', content: `以下是采集到的设备信息：\n\n${collectionText}` },
   ]
 
-  const aiResponse = await callAI(config, messages)
+  const promptText = JSON.stringify(messages, null, 2)
+  const deviceIdsStr = deviceIds.join(',')
+  const deviceNamesStr = collectedData.map((d) => d.deviceName).join(',')
+
+  let aiResponse: string
+  try {
+    aiResponse = await callAI(config, messages)
+  } catch (err: any) {
+    createSystemLog({
+      type: 'discovery',
+      status: 'failed',
+      deviceIds: deviceIdsStr,
+      deviceNames: deviceNamesStr,
+      promptText,
+      errorMessage: `AI 调用失败: ${err.message}`,
+    })
+    throw err
+  }
 
   // Parse AI response — strip markdown code blocks first
   let parsed: any
@@ -151,7 +169,28 @@ async function discoverTopologyInner(deviceIds: string[]): Promise<DiscoveryResu
       jsonStr = codeBlockMatch[1].trim()
     }
     parsed = JSON.parse(jsonStr)
+
+    // Log success
+    createSystemLog({
+      type: 'discovery',
+      status: 'success',
+      deviceIds: deviceIdsStr,
+      deviceNames: deviceNamesStr,
+      promptText,
+      aiResponse,
+      parsedResult: JSON.stringify(parsed, null, 2),
+    })
   } catch (err: any) {
+    // Log parse failure
+    createSystemLog({
+      type: 'discovery',
+      status: 'failed',
+      deviceIds: deviceIdsStr,
+      deviceNames: deviceNamesStr,
+      promptText,
+      aiResponse,
+      errorMessage: `JSON 解析失败: ${err.message}`,
+    })
     throw new Error(`AI 分析结果解析失败: ${err.message}`)
   }
 
