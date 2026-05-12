@@ -2,6 +2,11 @@
 
 ## 2026-05-12
 
+### 拓扑自动发现模块重写：AI 判断厂商并生成命令
+- **discovery.ts**：重写 `discoverTopologyInner()` 为四阶段流程——(1) 收集设备信息 (2) AI 根据厂商/型号判断厂商并生成采集命令 (3) SSH 执行命令 (4) AI 分析输出生成拓扑。移除对 `vendor-commands.ts` 的 `detectVendor`/`getDiscoveryCommands` 依赖
+- **ai.ts**：`executeCommandOnDevice()` SSH 连接成功后增加 2 秒延迟等待设备 banner/MOTD 输出完毕，超时时间从 30s 调整为 35s
+- **DeviceForm.tsx**：厂商字段改为必填（`required: true`）
+
 ### AI 助手执行日志增加完整对话记录
 - **数据库迁移**：`ai_exec_logs` 表新增 `prompt_text`、`ai_response` 两列，使用 PRAGMA 检查后 ALTER TABLE（避免 try-catch 静默吞掉错误）
 - **aiExecLogger**：`createLog()` 增加 `promptText`/`aiResponse` 参数，`getLogs()` 返回映射增加这两个字段

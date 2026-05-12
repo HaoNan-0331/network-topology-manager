@@ -41,7 +41,7 @@ export default function DeviceForm({ open, device, onOk, onCancel }: Props) {
             { value: 'generic', label: '通用设备' },
           ]} />
         </Form.Item>
-        <Form.Item name="vendor" label="厂商">
+        <Form.Item name="vendor" label="厂商" rules={[{ required: true, message: '请输入设备厂商' }]}>
           <Input placeholder="华为、Cisco、H3C..." />
         </Form.Item>
         <div style={{ display: 'flex', gap: 16 }}>

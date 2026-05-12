@@ -2,7 +2,6 @@ import { v4 as uuidv4 } from 'uuid'
 import { getAiConfig, callAI, getDeviceByIdInternal, executeCommandOnDevice } from './ai'
 import { getCommandWhitelist } from './ai'
 import { isCommandAllowed } from './commandSafety'
-import { detectVendor, getDiscoveryCommands, type Vendor } from './vendor-commands'
 import { createSystemLog } from './systemLog'
 
 export interface DiscoveryFailedDevice {
@@ -39,12 +38,13 @@ async function discoverTopologyInner(deviceIds: string[]): Promise<DiscoveryResu
   const collectedData: Array<{
     deviceId: string
     deviceName: string
-    vendor: Vendor
+    vendor: string
     outputs: Record<string, string>
   }> = []
   const failedDevices: DiscoveryFailedDevice[] = []
 
-  // Phase 1: Collect data from each device
+  // Phase 1: Collect device info
+  const deviceInfos: Array<{ deviceId: string; deviceName: string; vendor: string; model: string; version: string; ipAddress: string }> = []
   for (const deviceId of deviceIds) {
     const device = getDeviceByIdInternal(deviceId)
     if (!device) {
@@ -55,50 +55,124 @@ async function discoverTopologyInner(deviceIds: string[]): Promise<DiscoveryResu
       failedDevices.push({ deviceId, deviceName: device.name, error: 'Web设备不支持SSH采集' })
       continue
     }
+    deviceInfos.push({
+      deviceId: device.id,
+      deviceName: device.name,
+      vendor: device.vendor || '未知',
+      model: device.model || '未知',
+      version: device.version || '未知',
+      ipAddress: device.ipAddress || '',
+    })
+  }
 
-    try {
-      // Detect vendor via version command
-      let vendorOutput = ''
-      try {
-        vendorOutput = await executeCommandOnDevice(device, 'display version')
-      } catch {
-        try {
-          vendorOutput = await executeCommandOnDevice(device, 'show version')
-        } catch {
-          vendorOutput = ''
-        }
-      }
+  if (deviceInfos.length === 0) {
+    return { nodes: [], edges: [], failedDevices }
+  }
 
-      const vendor = detectVendor(vendorOutput)
-      const commands = getDiscoveryCommands(vendor)
-      const outputs: Record<string, string> = { version: vendorOutput }
+  // Phase 2: Ask AI which commands to execute for each device
+  const commandPrompt = `你是一个网络设备管理专家。根据以下设备信息，判断每台设备的厂商，并给出用于拓扑发现需要执行的命令列表。
 
-      // Skip first command (version already collected)
-      for (const cmd of commands.slice(1)) {
-        try {
-          // Safety check even for hardcoded discovery commands
-          const safety = isCommandAllowed(cmd, whitelist)
-          if (!safety.allowed) {
-            outputs[cmd] = `命令被安全策略拒绝: ${safety.reason}`
-            continue
-          }
-          outputs[cmd] = await executeCommandOnDevice(device, cmd)
-        } catch (err: any) {
-          outputs[cmd] = `执行失败: ${err.message}`
-        }
-      }
+已知厂商的常用命令参考：
+- 华为(Huawei/VRP): display version, display lldp neighbor brief, display arp, display ip routing-table, display interface brief
+- H3C(华三/Comware): display version, display lldp neighbor-information list, display arp, display ip routing-table, display interface brief
+- Cisco(IOS): show version, show lldp neighbors detail, show cdp neighbors detail, show ip arp, show ip route, show ip interface brief
+- 其他厂商：请根据设备信息推断合适的命令（如 LLDP 邻居、ARP 表、路由表、接口状态等对应的命令）
 
-      collectedData.push({ deviceId, deviceName: device.name, vendor, outputs })
-    } catch (err: any) {
-      failedDevices.push({ deviceId, deviceName: device.name, error: err.message })
+请返回严格的JSON格式（不要包含其他文本）：
+{
+  "devices": [
+    {
+      "deviceId": "设备的原始ID",
+      "deviceName": "设备名称",
+      "vendor": "判断的厂商",
+      "commands": ["命令1", "命令2", ...]
     }
+  ]
+}
+
+要求：
+1. 每台设备至少包含查看 LLDP/CDP 邻居、ARP 表的命令
+2. 如果已知厂商，使用该厂商正确的命令语法
+3. 如果是不认识的厂商，根据设备信息推断可能的命令语法
+4. 所有命令必须是只读查询命令`
+
+  const deviceListText = deviceInfos.map(d =>
+    `- 设备名: ${d.deviceName}, ID: ${d.deviceId}, 厂商: ${d.vendor}, 型号: ${d.model}, 版本: ${d.version}, IP: ${d.ipAddress}`
+  ).join('\n')
+
+  const commandMessages = [
+    { role: 'system', content: commandPrompt },
+    { role: 'user', content: `以下是需要发现的设备：\n${deviceListText}` },
+  ]
+
+  const commandPromptText = JSON.stringify(commandMessages, null, 2)
+  const deviceIdsStr = deviceIds.join(',')
+  const deviceNamesStr = deviceInfos.map(d => d.deviceName).join(',')
+
+  let commandAiResponse: string
+  try {
+    commandAiResponse = await callAI(config, commandMessages)
+  } catch (err: any) {
+    createSystemLog({
+      type: 'discovery', status: 'failed',
+      deviceIds: deviceIdsStr, deviceNames: deviceNamesStr,
+      promptText: commandPromptText,
+      errorMessage: `AI 命令生成失败: ${err.message}`,
+    })
+    throw err
+  }
+
+  // Log first AI call
+  createSystemLog({
+    type: 'discovery', status: 'success',
+    deviceIds: deviceIdsStr, deviceNames: deviceNamesStr,
+    promptText: commandPromptText,
+    aiResponse: commandAiResponse,
+    parsedResult: `阶段1: AI命令生成`,
+  })
+
+  // Parse AI response for commands
+  let deviceCommands: Array<{ deviceId: string; deviceName: string; vendor: string; commands: string[] }>
+  try {
+    let jsonStr = commandAiResponse.trim()
+    const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/)
+    if (codeBlockMatch) jsonStr = codeBlockMatch[1].trim()
+    const parsed = JSON.parse(jsonStr)
+    deviceCommands = parsed.devices || []
+  } catch (err: any) {
+    throw new Error(`AI 命令结果解析失败: ${err.message}`)
+  }
+
+  // Phase 3: Execute commands on each device
+  for (const dc of deviceCommands) {
+    const device = getDeviceByIdInternal(dc.deviceId)
+    if (!device) {
+      failedDevices.push({ deviceId: dc.deviceId, deviceName: dc.deviceName, error: '设备不存在' })
+      continue
+    }
+
+    const outputs: Record<string, string> = {}
+    for (const cmd of dc.commands) {
+      const safety = isCommandAllowed(cmd, whitelist)
+      if (!safety.allowed) {
+        outputs[cmd] = `命令被安全策略拒绝: ${safety.reason}`
+        continue
+      }
+      try {
+        outputs[cmd] = await executeCommandOnDevice(device, cmd)
+      } catch (err: any) {
+        outputs[cmd] = `执行失败: ${err.message}`
+      }
+    }
+
+    collectedData.push({ deviceId: dc.deviceId, deviceName: dc.deviceName, vendor: dc.vendor, outputs })
   }
 
   if (collectedData.length === 0) {
     return { nodes: [], edges: [], failedDevices }
   }
 
-  // Phase 2: Send to AI for analysis
+  // Phase 4: Send results to AI for topology analysis
   const collectionText = collectedData
     .map((d) => {
       const outputsText = Object.entries(d.outputs)
@@ -108,7 +182,7 @@ async function discoverTopologyInner(deviceIds: string[]): Promise<DiscoveryResu
     })
     .join('\n\n==========\n\n')
 
-  const systemPrompt = `你是一个网络拓扑分析专家。根据以下从多台网络设备采集的信息，分析它们之间的拓扑连接关系。
+  const topologyPrompt = `你是一个网络拓扑分析专家。根据以下从多台网络设备采集的信息，分析它们之间的拓扑连接关系。
 
 请返回严格的JSON格式（不要包含其他文本）：
 {
@@ -135,66 +209,54 @@ async function discoverTopologyInner(deviceIds: string[]): Promise<DiscoveryResu
 3. 为每个节点分配合理的布局位置（分层/星型/树形）
 4. 接口名从邻居信息和接口表中提取`
 
-  const messages = [
-    { role: 'system', content: systemPrompt },
+  const topologyMessages = [
+    { role: 'system', content: topologyPrompt },
     { role: 'user', content: `以下是采集到的设备信息：\n\n${collectionText}` },
   ]
 
-  const promptText = JSON.stringify(messages, null, 2)
-  const deviceIdsStr = deviceIds.join(',')
-  const deviceNamesStr = collectedData.map((d) => d.deviceName).join(',')
+  const topologyPromptText = JSON.stringify(topologyMessages, null, 2)
 
   let aiResponse: string
   try {
-    aiResponse = await callAI(config, messages)
+    aiResponse = await callAI(config, topologyMessages)
   } catch (err: any) {
     createSystemLog({
-      type: 'discovery',
-      status: 'failed',
-      deviceIds: deviceIdsStr,
-      deviceNames: deviceNamesStr,
-      promptText,
-      errorMessage: `AI 调用失败: ${err.message}`,
+      type: 'discovery', status: 'failed',
+      deviceIds: deviceIdsStr, deviceNames: deviceNamesStr,
+      promptText: topologyPromptText,
+      errorMessage: `AI 拓扑分析失败: ${err.message}`,
     })
     throw err
   }
 
-  // Parse AI response — strip markdown code blocks first
+  // Parse topology result
   let parsed: any
   try {
     let jsonStr = aiResponse.trim()
-    // Remove markdown code fences if present
     const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/)
-    if (codeBlockMatch) {
-      jsonStr = codeBlockMatch[1].trim()
-    }
+    if (codeBlockMatch) jsonStr = codeBlockMatch[1].trim()
     parsed = JSON.parse(jsonStr)
 
-    // Log success
+    // Log second AI call - topology analysis
     createSystemLog({
-      type: 'discovery',
-      status: 'success',
-      deviceIds: deviceIdsStr,
-      deviceNames: deviceNamesStr,
-      promptText,
+      type: 'discovery', status: 'success',
+      deviceIds: deviceIdsStr, deviceNames: deviceNamesStr,
+      promptText: topologyPromptText,
       aiResponse,
       parsedResult: JSON.stringify(parsed, null, 2),
     })
   } catch (err: any) {
-    // Log parse failure
     createSystemLog({
-      type: 'discovery',
-      status: 'failed',
-      deviceIds: deviceIdsStr,
-      deviceNames: deviceNamesStr,
-      promptText,
+      type: 'discovery', status: 'failed',
+      deviceIds: deviceIdsStr, deviceNames: deviceNamesStr,
+      promptText: topologyPromptText,
       aiResponse,
       errorMessage: `JSON 解析失败: ${err.message}`,
     })
     throw new Error(`AI 分析结果解析失败: ${err.message}`)
   }
 
-  // Convert to TopologyNode[] and TopologyEdge[]
+  // Convert to topology format
   const nodes = (parsed.nodes || []).map((n: any) => {
     const dev = getDeviceByIdInternal(n.deviceId)
     return {

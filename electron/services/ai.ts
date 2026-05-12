@@ -273,37 +273,41 @@ export function executeCommandOnDevice(
       cfg.password = device.password
     }
 
-    // Execution timeout (30s)
+    // Execution timeout (35s, includes 2s banner wait)
     let settled = false
     const timer = setTimeout(() => {
       if (!settled) {
         settled = true
         client.end()
-        reject(new Error('命令执行超时 (30s)'))
+        reject(new Error('命令执行超时 (35s)'))
       }
-    }, 30000)
+    }, 35000)
 
     client.on('ready', () => {
-      client.exec(command, (err, stream) => {
-        if (err) {
-          clearTimeout(timer)
-          client.end()
-          if (!settled) { settled = true; reject(err) }
-          return
-        }
-        let output = ''
-        stream.on('data', (data: Buffer) => {
-          output += data.toString()
+      // Wait for device banner/MOTD to finish before executing command
+      setTimeout(() => {
+        if (settled) return // timed out during wait
+        client.exec(command, (err, stream) => {
+          if (err) {
+            clearTimeout(timer)
+            client.end()
+            if (!settled) { settled = true; reject(err) }
+            return
+          }
+          let output = ''
+          stream.on('data', (data: Buffer) => {
+            output += data.toString()
+          })
+          stream.stderr.on('data', (data: Buffer) => {
+            output += data.toString()
+          })
+          stream.on('close', () => {
+            clearTimeout(timer)
+            client.end()
+            if (!settled) { settled = true; resolve(output) }
+          })
         })
-        stream.stderr.on('data', (data: Buffer) => {
-          output += data.toString()
-        })
-        stream.on('close', () => {
-          clearTimeout(timer)
-          client.end()
-          if (!settled) { settled = true; resolve(output) }
-        })
-      })
+      }, 2000)
     })
     client.on('error', (err) => {
       clearTimeout(timer)
