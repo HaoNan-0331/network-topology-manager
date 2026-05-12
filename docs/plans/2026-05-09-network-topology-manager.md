@@ -1,6 +1,6 @@
 # 网络拓扑管理工具 实施计划
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> **状态: 已完成** — 所有 14 个 Task 已实施并提交至 `a0c41d7`（2026-05-10）
 
 **Goal:** 构建一个 Windows 桌面端网络拓扑管理工具，支持手动/自动拓扑绘制、设备管理、CLI/Web 连接、AI 辅助（含设备查询和安全管控）。
 
@@ -1205,19 +1205,32 @@ network_toplogy/
 
 ## 实施顺序
 
-| Phase | Task | 内容 | 依赖 |
+| Phase | Task | 内容 | 状态 |
 |-------|------|------|------|
-| 1 | Task 1 | 项目初始化 | 无 |
-| 1 | Task 2 | Electron 主进程 + preload | Task 1 |
-| 1 | Task 3 | React 渲染进程骨架 | Task 1 |
-| 2 | Task 4 | 加密工具 + 密钥管理 + 数据库 | Task 2 |
-| 2 | Task 5 | 认证服务 | Task 4 |
-| 2 | Task 6 | 登录界面 UI | Task 5 |
-| 3 | Task 7 | 主布局框架 | Task 3, 6 |
-| 3 | Task 8 | 设备管理（类型+SSH Key+级联删除） | Task 4, 7 |
-| 4 | Task 9 | 拓扑画布（设备图标+动态接口） | Task 7 |
-| 4 | Task 10 | 拓扑管理页面（含导入导出） | Task 8, 9 |
-| 5 | Task 11 | 设备连接（独立弹窗+SSH Key） | Task 10 |
-| 6 | Task 12 | AI 服务（对话+设备查询+白名单+日志） | Task 4, 7 |
-| 6 | Task 13 | 系统设置（白名单编辑+日志查看器） | Task 12 |
-| 7 | Task 14 | 拓扑自动发现（SSH采集+AI分析） | Task 12, 11 |
+| 1 | Task 1 | 项目初始化 | ✅ 已完成 |
+| 1 | Task 2 | Electron 主进程 + preload | ✅ 已完成 |
+| 1 | Task 3 | React 渲染进程骨架 | ✅ 已完成 |
+| 2 | Task 4 | 加密工具 + 密钥管理 + 数据库 | ✅ 已完成 |
+| 2 | Task 5 | 认证服务 | ✅ 已完成 |
+| 2 | Task 6 | 登录界面 UI | ✅ 已完成 |
+| 3 | Task 7 | 主布局框架 | ✅ 已完成 |
+| 3 | Task 8 | 设备管理（类型+SSH Key+级联删除） | ✅ 已完成 |
+| 4 | Task 9 | 拓扑画布（设备图标+动态接口） | ✅ 已完成 |
+| 4 | Task 10 | 拓扑管理页面（含导入导出） | ✅ 已完成 |
+| 5 | Task 11 | 设备连接（独立弹窗+SSH Key） | ✅ 已完成 |
+| 6 | Task 12 | AI 服务（对话+设备查询+白名单+日志） | ✅ 已完成 |
+| 6 | Task 13 | 系统设置（白名单编辑+日志查看器） | ✅ 已完成 |
+| 7 | Task 14 | 拓扑自动发现（SSH采集+AI分析） | ✅ 已完成 |
+
+---
+
+## 已知待修复问题（回退记录 2026-05-12）
+
+以下问题在 2026-05-12 会话中发现并尝试修复，但因数据库迁移和功能回归问题已全部回退。待后续重新规划实施：
+
+1. **SSH 算法兼容性** — 缺少 `curve25519-sha256` 导致现代 Linux 服务器连接失败（`ai.ts`、`connection.ts` 三处 algorithms 配置）
+2. **SSH 批量执行** — 拓扑发现时每条命令单独建连接，需改为单连接批量执行（`executeCommandsOnDevice`）
+3. **confirm 弹窗需点两次** — `handleConfirm` 缺少防重复点击保护
+4. **会话标题不更新** — 标题更新逻辑在 `confirm_required` early return 之后被跳过
+5. **H3C 设备 LLDP 命令错误** — AI 聊天未使用 vendor-commands 命令集，AI 自行生成了华为风格命令
+6. **AI 执行日志详情** — `ai_exec_logs` 未记录完整 prompt 和 AI 响应（需新增 `prompt_text`、`ai_response` 字段 + 前端详情弹窗）
