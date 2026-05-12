@@ -160,15 +160,15 @@ export default function AIPage() {
 
   async function handleConfirm(approved: boolean) {
     if (!pendingConfirm || !currentSessionId) return
+    const confirmData = pendingConfirm
+    setPendingConfirm(null) // 立即关闭弹窗，防止重复点击
     setLoading(true)
     try {
-      const result = await window.api.ai.confirmCommand(pendingConfirm.execId, approved)
-      // confirmCommand now returns AI analysis (approved) or rejection message
+      const result = await window.api.ai.confirmCommand(confirmData.execId, approved)
       setMessages((prev) => [...prev, { role: 'assistant', content: result }])
     } catch (e: any) {
       message.error(e.message)
     }
-    setPendingConfirm(null)
     setLoading(false)
   }
 

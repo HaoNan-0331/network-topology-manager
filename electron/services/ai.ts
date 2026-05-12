@@ -5,7 +5,7 @@ import { getDatabase } from '../database/connection'
 import { encField, decField } from '../utils/crypto'
 import { verifyPasswordSync } from '../utils/crypto'
 import { isCommandAllowed } from './commandSafety'
-import { createLog, updateLogStatus, getLogs, setAiExecLoggerMasterKey } from './aiExecLogger'
+import { createLog, updateLogStatus, appendLogAiResponse, getLogs, setAiExecLoggerMasterKey } from './aiExecLogger'
 
 let MK = ''
 export function setAiMasterKey(key: string) {
@@ -419,6 +419,13 @@ export async function confirmCommand(
   ]
 
   const finalReply = await callAI(batch.config, followUpMessages)
+
+  // Append second AI interaction to all related logs
+  const secondPrompt = JSON.stringify(followUpMessages, null, 2)
+  for (const cmd of batch.commands) {
+    appendLogAiResponse(cmd.logId, secondPrompt, finalReply)
+  }
+
   saveChatMessage('assistant', finalReply, null, batch.sessionId)
   return finalReply
 }
@@ -510,6 +517,8 @@ export async function chat(
       status: safety.allowed ? (execMode === 'auto' ? 'approved' : 'pending') : 'rejected',
       mode: execMode,
       aiReason: aiReply.substring(0, 500),
+      promptText: JSON.stringify(fullMessages, null, 2),
+      aiResponse: aiReply,
     })
 
     if (!safety.allowed) {

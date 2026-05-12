@@ -13,6 +13,8 @@ export interface AIExecLog {
   status: 'approved' | 'rejected' | 'pending' | 'executed' | 'failed'
   mode: 'confirm' | 'auto'
   aiReason: string
+  promptText: string
+  aiResponse: string
   createdAt: string
 }
 

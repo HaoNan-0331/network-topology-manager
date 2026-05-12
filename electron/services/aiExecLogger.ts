@@ -12,11 +12,13 @@ export function createLog(entry: {
   status: string
   mode: string
   aiReason: string
+  promptText?: string
+  aiResponse?: string
 }): string {
   const id = uuidv4()
   getDatabase().prepare(`
-    INSERT INTO ai_exec_logs (id, device_id, device_name_enc, command, status, mode, ai_reason)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO ai_exec_logs (id, device_id, device_name_enc, command, status, mode, ai_reason, prompt_text, ai_response)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     entry.deviceId,
@@ -24,7 +26,9 @@ export function createLog(entry: {
     entry.command,
     entry.status,
     entry.mode,
-    entry.aiReason
+    entry.aiReason,
+    entry.promptText || '',
+    entry.aiResponse || ''
   )
   return id
 }
@@ -35,6 +39,18 @@ export function updateLogStatus(id: string, status: string): void {
     .run(status, id)
 }
 
+export function appendLogAiResponse(id: string, secondPrompt: string, secondResponse: string): void {
+  getDatabase()
+    .prepare('UPDATE ai_exec_logs SET prompt_text = prompt_text || ? || ?, ai_response = ai_response || ? || ? WHERE id = ?')
+    .run(
+      '\n\n========== 命令执行后的第二次 AI 调用 ==========\n\n发送给 AI 的 Prompt:\n',
+      secondPrompt,
+      '\n\nAI 分析结果:\n',
+      secondResponse,
+      id
+    )
+}
+
 export function getLogs(limit = 100): Array<{
   id: string
   deviceId: string
@@ -43,6 +59,8 @@ export function getLogs(limit = 100): Array<{
   status: string
   mode: string
   aiReason: string
+  promptText: string
+  aiResponse: string
   createdAt: string
 }> {
   const rows = getDatabase()
@@ -56,6 +74,8 @@ export function getLogs(limit = 100): Array<{
     status: row.status,
     mode: row.mode,
     aiReason: row.ai_reason,
+    promptText: row.prompt_text || '',
+    aiResponse: row.ai_response || '',
     createdAt: row.created_at,
   }))
 }

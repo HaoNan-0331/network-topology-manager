@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## 2026-05-12
+
+### AI 助手执行日志增加完整对话记录
+- **数据库迁移**：`ai_exec_logs` 表新增 `prompt_text`、`ai_response` 两列，使用 PRAGMA 检查后 ALTER TABLE（避免 try-catch 静默吞掉错误）
+- **aiExecLogger**：`createLog()` 增加 `promptText`/`aiResponse` 参数，`getLogs()` 返回映射增加这两个字段
+- **ai.ts**：`chat()` 调用 `createLog()` 时写入完整 messages JSON 和 AI 原始响应
+- **类型定义**：`AIExecLog` 接口增加 `promptText`/`aiResponse` 字段
+- **日志审计页面**：`AIExecLogTab` 增加"操作"列和详情弹窗，可查看发送给 AI 的 Prompt 和 AI 原始响应
+
 ## 2026-05-10
 
 ### 布局重构：工具栏移入侧边栏

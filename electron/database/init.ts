@@ -111,4 +111,13 @@ export function createTables() {
   if (!cols.some((c) => c.name === 'session_id')) {
     db.exec('ALTER TABLE chat_history ADD COLUMN session_id TEXT')
   }
+
+  // Migrate: add prompt_text and ai_response columns to ai_exec_logs
+  const execLogCols = db.prepare("PRAGMA table_info(ai_exec_logs)").all() as any[]
+  if (!execLogCols.some((c) => c.name === 'prompt_text')) {
+    db.exec("ALTER TABLE ai_exec_logs ADD COLUMN prompt_text TEXT DEFAULT ''")
+  }
+  if (!execLogCols.some((c) => c.name === 'ai_response')) {
+    db.exec("ALTER TABLE ai_exec_logs ADD COLUMN ai_response TEXT DEFAULT ''")
+  }
 }
