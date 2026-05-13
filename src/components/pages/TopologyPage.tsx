@@ -25,15 +25,6 @@ export default function TopologyPage() {
   const isLoadingRef = useRef(false)
   const setToolbarState = useTopologyToolbarStore((s) => s.setToolbar)
 
-  const fetchTopologies = useCallback(async () => {
-    const list = await window.api.topology.list()
-    setTopologies(list)
-  }, [])
-
-  useEffect(() => {
-    fetchTopologies()
-  }, [fetchTopologies])
-
   const loadTopology = useCallback(async (id: string) => {
     isLoadingRef.current = true
     const topo = await window.api.topology.getById(id)
@@ -43,6 +34,20 @@ export default function TopologyPage() {
     }
     isLoadingRef.current = false
   }, [setNodes, setEdges])
+
+  const fetchTopologies = useCallback(async () => {
+    const list = await window.api.topology.list()
+    setTopologies(list)
+    // Auto-select most recent topology if none selected
+    if (list.length > 0) {
+      setCurrentTopologyId(list[0].id)
+      loadTopology(list[0].id)
+    }
+  }, [loadTopology])
+
+  useEffect(() => {
+    fetchTopologies()
+  }, [fetchTopologies])
 
   const handleTopologyChange = useCallback((id: string | null) => {
     setCurrentTopologyId(id)

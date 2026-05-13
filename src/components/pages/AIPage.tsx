@@ -131,6 +131,13 @@ export default function AIPage() {
         currentSessionId
       )
 
+      // Auto title: update session title from first user message
+      if (messages.length === 0) {
+        const title = text.length > 20 ? text.substring(0, 20) + '...' : text
+        window.api.ai.updateSessionTitle(currentSessionId, title)
+        setSessions((prev) => prev.map((s) => s.id === currentSessionId ? { ...s, title } : s))
+      }
+
       // Check if reply is a confirm_required response
       try {
         const parsed: ConfirmData = JSON.parse(reply)
@@ -144,13 +151,6 @@ export default function AIPage() {
       }
 
       setMessages([...newMessages, { role: 'assistant', content: reply }])
-
-      // Auto title: update session title from first user message
-      if (messages.length === 0) {
-        const title = text.length > 20 ? text.substring(0, 20) + '...' : text
-        window.api.ai.updateSessionTitle(currentSessionId, title)
-        setSessions((prev) => prev.map((s) => s.id === currentSessionId ? { ...s, title } : s))
-      }
     } catch (e: any) {
       const errMsg = `错误: ${e.message}`
       setMessages([...newMessages, { role: 'assistant', content: errMsg }])
