@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import fs from 'fs'
 import { Client, type ConnectConfig } from 'ssh2'
+import iconv from 'iconv-lite'
 import { getDatabase } from '../database/connection'
 import { encField, decField } from '../utils/crypto'
 import { verifyPasswordSync } from '../utils/crypto'
@@ -231,89 +232,229 @@ export async function callAI(
   return data.choices?.[0]?.message?.content || ''
 }
 
-// ---------- SSH execution ----------
+// ---------- SSH execution (shell mode) ----------
 
-export function executeCommandOnDevice(
+function stripAnsi(str: string): string {
+  return str
+    .replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '')
+    .replace(/\x1b\][^\x07]*\x07/g, '')
+    .replace(/\x1b[^[\]]/g, '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '')
+}
+
+function decodeDeviceBuffer(data: Buffer): string {
+  const text = data.toString('utf-8')
+  if (!text.includes('\ufffd')) return text
+  return iconv.decode(data, 'gbk')
+}
+
+function isPromptLine(line: string): boolean {
+  const t = line.trim()
+  if (!t || t.length > 80) return false
+  // <hostname>, [hostname]
+  if (/^[<\[][\w\-@.()\s]+[>\]]$/.test(t)) return true
+  // hostname#, hostname>
+  if (/^[\w\-@.]+[>#]$/.test(t)) return true
+  // user@host:~$ or root@host:~#
+  if (/^[\w\-@.:~/]+[#$]$/.test(t)) return true
+  return false
+}
+
+function detectPrompt(text: string): string {
+  const lines = text.trimEnd().split('\n')
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i].trim()
+    if (line && isPromptLine(line)) return line
+  }
+  return ''
+}
+
+function extractCommandOutput(raw: string, cmd: string, prompt: string): string {
+  const lines = raw.split('\n')
+  // Skip command echo
+  let start = 0
+  const cmdTrimmed = cmd.trim()
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].includes(cmdTrimmed)) { start = i + 1; break }
+  }
+  // Skip prompt at end
+  let end = lines.length - 1
+  while (end > start && lines[end].trim() === '') end--
+  if (end >= start && (lines[end].trim() === prompt || isPromptLine(lines[end]))) end--
+
+  return lines.slice(start, end + 1)
+    .filter(l => !/----\s*[Mm]ore\s*----|--More--/i.test(l))
+    .join('\n')
+    .trim()
+}
+
+function buildSSHConfig(device: any): ConnectConfig {
+  const cfg: ConnectConfig = {
+    host: device.ipAddress,
+    port: device.port || 22,
+    username: device.username || 'root',
+    readyTimeout: 10000,
+    algorithms: {
+      kex: [
+        'ecdh-sha2-nistp256', 'ecdh-sha2-nistp384', 'ecdh-sha2-nistp521',
+        'diffie-hellman-group-exchange-sha256', 'diffie-hellman-group14-sha256',
+        'diffie-hellman-group15-sha512', 'diffie-hellman-group16-sha512',
+        'diffie-hellman-group-exchange-sha1', 'diffie-hellman-group14-sha1',
+        'diffie-hellman-group1-sha1',
+      ],
+      cipher: [
+        'aes128-gcm@openssh.com', 'aes256-gcm@openssh.com',
+        'aes128-ctr', 'aes192-ctr', 'aes256-ctr',
+        'aes128-cbc', 'aes192-cbc', 'aes256-cbc',
+        '3des-cbc', 'blowfish-cbc',
+      ],
+      serverHostKey: [
+        'ssh-rsa', 'rsa-sha2-256', 'rsa-sha2-512',
+        'ecdsa-sha2-nistp256', 'ecdsa-sha2-nistp384', 'ecdsa-sha2-nistp521',
+        'ssh-ed25519', 'ssh-dss',
+      ],
+    },
+  }
+  if (device.sshKeyContent) {
+    cfg.privateKey = Buffer.from(device.sshKeyContent)
+  } else if (device.sshKeyPath) {
+    cfg.privateKey = fs.readFileSync(device.sshKeyPath)
+  } else {
+    cfg.password = device.password
+  }
+  return cfg
+}
+
+export function executeCommandsOnDevice(
   device: any,
-  command: string
-): Promise<string> {
+  commands: string[]
+): Promise<Array<{ command: string; output: string; success: boolean }>> {
+  if (commands.length === 0) return Promise.resolve([])
+
   return new Promise((resolve, reject) => {
     const client = new Client()
-    const cfg: ConnectConfig = {
-      host: device.ipAddress,
-      port: device.port || 22,
-      username: device.username || 'root',
-      readyTimeout: 10000,
-      algorithms: {
-        kex: [
-          'ecdh-sha2-nistp256', 'ecdh-sha2-nistp384', 'ecdh-sha2-nistp521',
-          'diffie-hellman-group-exchange-sha256', 'diffie-hellman-group14-sha256',
-          'diffie-hellman-group15-sha512', 'diffie-hellman-group16-sha512',
-          'diffie-hellman-group-exchange-sha1', 'diffie-hellman-group14-sha1',
-          'diffie-hellman-group1-sha1',
-        ],
-        cipher: [
-          'aes128-gcm@openssh.com', 'aes256-gcm@openssh.com',
-          'aes128-ctr', 'aes192-ctr', 'aes256-ctr',
-          'aes128-cbc', 'aes192-cbc', 'aes256-cbc',
-          '3des-cbc', 'blowfish-cbc',
-        ],
-        serverHostKey: [
-          'ssh-rsa', 'rsa-sha2-256', 'rsa-sha2-512',
-          'ecdsa-sha2-nistp256', 'ecdsa-sha2-nistp384', 'ecdsa-sha2-nistp521',
-          'ssh-ed25519', 'ssh-dss',
-        ],
-      },
-    }
-    if (device.sshKeyContent) {
-      cfg.privateKey = Buffer.from(device.sshKeyContent)
-    } else if (device.sshKeyPath) {
-      cfg.privateKey = fs.readFileSync(device.sshKeyPath)
-    } else {
-      cfg.password = device.password
-    }
+    const cfg = buildSSHConfig(device)
 
-    // Execution timeout (35s, includes 2s banner wait)
+    const overallTimeout = 30000 + commands.length * 15000
     let settled = false
-    const timer = setTimeout(() => {
+    const overallTimer = setTimeout(() => {
       if (!settled) {
         settled = true
         client.end()
-        reject(new Error('命令执行超时 (35s)'))
+        reject(new Error(`命令执行超时 (${Math.round(overallTimeout / 1000)}s)`))
       }
-    }, 35000)
+    }, overallTimeout)
 
     client.on('ready', () => {
-      // Wait for device banner/MOTD to finish before executing command
-      setTimeout(() => {
-        if (settled) return // timed out during wait
-        client.exec(command, (err, stream) => {
-          if (err) {
-            clearTimeout(timer)
-            client.end()
-            if (!settled) { settled = true; reject(err) }
-            return
+      client.shell({ term: 'vt100', cols: 200, rows: 9999 }, (err, stream) => {
+        if (err) {
+          clearTimeout(overallTimer)
+          client.end()
+          if (!settled) { settled = true; reject(err) }
+          return
+        }
+
+        let buffer = ''
+        let quietTimer: ReturnType<typeof setTimeout> | null = null
+        let state: 'WAIT_PROMPT' | 'EXECUTING' | 'DONE' = 'WAIT_PROMPT'
+        let cmdIndex = 0
+        let results: Array<{ command: string; output: string; success: boolean }> = []
+        let promptStr = ''
+
+        function resetQuietTimer(ms: number) {
+          if (quietTimer) clearTimeout(quietTimer)
+          quietTimer = setTimeout(onQuiet, ms)
+        }
+
+        function onQuiet() {
+          quietTimer = null
+          const cleanBuf = stripAnsi(buffer)
+
+          if (state === 'WAIT_PROMPT') {
+            const prompt = detectPrompt(cleanBuf)
+            if (prompt) {
+              promptStr = prompt
+              state = 'EXECUTING'
+              sendNextCommand()
+            } else {
+              resetQuietTimer(500)
+            }
+          } else if (state === 'EXECUTING') {
+            // Handle pagination
+            if (/----\s*[Mm]ore\s*----|--More--/i.test(cleanBuf)) {
+              stream.write(' ')
+              buffer = ''
+              resetQuietTimer(1000)
+              return
+            }
+            // Check if command completed (prompt at end)
+            const lines = cleanBuf.trimEnd().split('\n')
+            const lastLine = lines[lines.length - 1].trim()
+            const done = (promptStr && lastLine === promptStr) || isPromptLine(lastLine)
+            if (done) {
+              const output = extractCommandOutput(cleanBuf, commands[cmdIndex], lastLine)
+              results.push({ command: commands[cmdIndex], output, success: true })
+              cmdIndex++
+              if (cmdIndex < commands.length) {
+                buffer = ''
+                sendNextCommand()
+              } else {
+                finish()
+              }
+            } else {
+              resetQuietTimer(500)
+            }
           }
-          let output = ''
-          stream.on('data', (data: Buffer) => {
-            output += data.toString()
-          })
-          stream.stderr.on('data', (data: Buffer) => {
-            output += data.toString()
-          })
-          stream.on('close', () => {
-            clearTimeout(timer)
-            client.end()
-            if (!settled) { settled = true; resolve(output) }
-          })
+        }
+
+        function sendNextCommand() {
+          buffer = ''
+          stream.write(commands[cmdIndex] + '\n')
+          resetQuietTimer(800)
+        }
+
+        function finish() {
+          state = 'DONE'
+          if (quietTimer) clearTimeout(quietTimer)
+          clearTimeout(overallTimer)
+          stream.end()
+          client.end()
+          if (!settled) { settled = true; resolve(results) }
+        }
+
+        stream.on('data', (data: Buffer) => {
+          buffer += decodeDeviceBuffer(data)
+          resetQuietTimer(300)
         })
-      }, 2000)
+        stream.on('close', () => {
+          if (quietTimer) clearTimeout(quietTimer)
+          clearTimeout(overallTimer)
+          if (!settled) {
+            settled = true
+            if (state === 'EXECUTING' && buffer) {
+              const output = extractCommandOutput(stripAnsi(buffer), commands[cmdIndex], promptStr)
+              results.push({ command: commands[cmdIndex], output, success: true })
+            }
+            resolve(results)
+          }
+        })
+      })
     })
+
     client.on('error', (err) => {
-      clearTimeout(timer)
+      clearTimeout(overallTimer)
       if (!settled) { settled = true; reject(err) }
     })
     client.connect(cfg)
+  })
+}
+
+export function executeCommandOnDevice(device: any, command: string): Promise<string> {
+  return executeCommandsOnDevice(device, [command]).then(results => {
+    if (results.length === 0) throw new Error('命令执行失败: 无结果')
+    if (!results[0].success) throw new Error(results[0].output)
+    return results[0].output
   })
 }
 
@@ -381,24 +522,45 @@ export async function confirmCommand(
     return msg
   }
 
-  // Execute all approved commands
+  // Execute all approved commands — group by device for batch execution
   const cmdResults: Array<{ deviceName: string; cmd: string; output: string; status: string }> = []
 
   for (const cmd of batch.commands) {
     updateLogStatus(cmd.logId, 'approved')
-    const device = getDeviceByIdInternal(cmd.deviceId)
+  }
+
+  const deviceGroups = new Map<string, Array<{ logId: string; deviceName: string; command: string }>>()
+  for (const cmd of batch.commands) {
+    if (!deviceGroups.has(cmd.deviceId)) deviceGroups.set(cmd.deviceId, [])
+    deviceGroups.get(cmd.deviceId)!.push(cmd)
+  }
+
+  for (const [deviceId, cmds] of deviceGroups) {
+    const device = getDeviceByIdInternal(deviceId)
     if (!device) {
-      updateLogStatus(cmd.logId, 'failed')
-      cmdResults.push({ deviceName: cmd.deviceName, cmd: cmd.command, output: '设备不存在', status: 'failed' })
+      for (const cmd of cmds) {
+        updateLogStatus(cmd.logId, 'failed')
+        cmdResults.push({ deviceName: cmd.deviceName, cmd: cmd.command, output: '设备不存在', status: 'failed' })
+      }
       continue
     }
     try {
-      const output = await executeCommandOnDevice(device, cmd.command)
-      updateLogStatus(cmd.logId, 'executed')
-      cmdResults.push({ deviceName: cmd.deviceName, cmd: cmd.command, output, status: 'executed' })
+      const execResults = await executeCommandsOnDevice(device, cmds.map(c => c.command))
+      for (let i = 0; i < cmds.length; i++) {
+        const r = execResults[i]
+        if (r && r.success) {
+          updateLogStatus(cmds[i].logId, 'executed')
+          cmdResults.push({ deviceName: cmds[i].deviceName, cmd: r.command, output: r.output, status: 'executed' })
+        } else {
+          updateLogStatus(cmds[i].logId, 'failed')
+          cmdResults.push({ deviceName: cmds[i].deviceName, cmd: cmds[i].command, output: r?.output || '执行失败', status: 'failed' })
+        }
+      }
     } catch (err: any) {
-      updateLogStatus(cmd.logId, 'failed')
-      cmdResults.push({ deviceName: cmd.deviceName, cmd: cmd.command, output: `执行失败: ${err.message}`, status: 'failed' })
+      for (const cmd of cmds) {
+        updateLogStatus(cmd.logId, 'failed')
+        cmdResults.push({ deviceName: cmd.deviceName, cmd: cmd.command, output: `执行失败: ${err.message}`, status: 'failed' })
+      }
     }
   }
 
@@ -572,18 +734,35 @@ export async function chat(
     return confirmResponse
   }
 
-  // Auto mode: execute all commands
+  // Auto mode: execute all commands — group by device for batch execution
   const cmdResults: Array<{ deviceName: string; cmd: string; output: string; status: string }> = []
 
-  for (const { logId, deviceId, deviceName, command } of allowedCommands) {
+  const autoGroups = new Map<string, Array<{ logId: string; deviceName: string; command: string }>>()
+  for (const cmd of allowedCommands) {
+    if (!autoGroups.has(cmd.deviceId)) autoGroups.set(cmd.deviceId, [])
+    autoGroups.get(cmd.deviceId)!.push({ logId: cmd.logId, deviceName: cmd.deviceName, command: cmd.command })
+  }
+
+  for (const [deviceId, cmds] of autoGroups) {
     const device = getDeviceByIdInternal(deviceId)
+    if (!device) continue
     try {
-      const output = await executeCommandOnDevice(device, command)
-      updateLogStatus(logId, 'executed')
-      cmdResults.push({ deviceName, cmd: command, output, status: 'executed' })
+      const execResults = await executeCommandsOnDevice(device, cmds.map(c => c.command))
+      for (let i = 0; i < cmds.length; i++) {
+        const r = execResults[i]
+        if (r && r.success) {
+          updateLogStatus(cmds[i].logId, 'executed')
+          cmdResults.push({ deviceName: cmds[i].deviceName, cmd: r.command, output: r.output, status: 'executed' })
+        } else {
+          updateLogStatus(cmds[i].logId, 'failed')
+          cmdResults.push({ deviceName: cmds[i].deviceName, cmd: cmds[i].command, output: r?.output || '执行失败', status: 'failed' })
+        }
+      }
     } catch (err: any) {
-      updateLogStatus(logId, 'failed')
-      cmdResults.push({ deviceName, cmd: command, output: `执行失败: ${err.message}`, status: 'failed' })
+      for (const cmd of cmds) {
+        updateLogStatus(cmd.logId, 'failed')
+        cmdResults.push({ deviceName: cmd.deviceName, cmd: cmd.command, output: `执行失败: ${err.message}`, status: 'failed' })
+      }
     }
   }
 

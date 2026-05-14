@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid'
-import { getAiConfig, callAI, getDeviceByIdInternal, executeCommandOnDevice } from './ai'
+import { getAiConfig, callAI, getDeviceByIdInternal, executeCommandsOnDevice } from './ai'
 import { getCommandWhitelist } from './ai'
 import { isCommandAllowed } from './commandSafety'
 import { createSystemLog } from './systemLog'
@@ -152,20 +152,37 @@ async function discoverTopologyInner(deviceIds: string[]): Promise<DiscoveryResu
     }
 
     const outputs: Record<string, string> = {}
-    for (const cmd of dc.commands) {
+    const safeCommands = dc.commands.filter(cmd => {
       const safety = isCommandAllowed(cmd, whitelist)
       if (!safety.allowed) {
         outputs[cmd] = `命令被安全策略拒绝: ${safety.reason}`
-        continue
+        return false
       }
+      return true
+    })
+
+    if (safeCommands.length > 0) {
       try {
-        outputs[cmd] = await executeCommandOnDevice(device, cmd)
+        const results = await executeCommandsOnDevice(device, safeCommands)
+        for (const r of results) {
+          outputs[r.command] = r.success ? r.output : `执行失败: ${r.output}`
+        }
       } catch (err: any) {
-        outputs[cmd] = `执行失败: ${err.message}`
+        // Connection failed entirely — skip this device
+        failedDevices.push({ deviceId: dc.deviceId, deviceName: dc.deviceName, error: `连接失败: ${err.message}` })
+        continue
       }
     }
 
-    collectedData.push({ deviceId: dc.deviceId, deviceName: dc.deviceName, vendor: dc.vendor, outputs })
+    // Check if device has any valid output
+    const hasValidOutput = Object.values(outputs).some(
+      out => !out.startsWith('执行失败') && !out.startsWith('命令被安全策略拒绝')
+    )
+    if (hasValidOutput) {
+      collectedData.push({ deviceId: dc.deviceId, deviceName: dc.deviceName, vendor: dc.vendor, outputs })
+    } else {
+      failedDevices.push({ deviceId: dc.deviceId, deviceName: dc.deviceName, error: '所有命令执行失败，无有效输出' })
+    }
   }
 
   if (collectedData.length === 0) {
