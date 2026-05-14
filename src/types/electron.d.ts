@@ -76,6 +76,7 @@ export interface ElectronAPI {
     disconnect: (sessionId: string) => Promise<void>
     onData: (sid: string, cb: (data: string) => void) => void
     write: (sid: string, data: string) => Promise<void>
+    test: (deviceId: string) => Promise<{ success: boolean; message: string }>
   }
   ai: {
     chat: (messages: Array<{ role: string; content: string }>, deviceIds?: string[], sessionId?: string) => Promise<string>

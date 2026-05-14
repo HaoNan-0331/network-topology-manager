@@ -32,6 +32,7 @@ const api = {
       ipcRenderer.on(`connection:data:${sid}`, (_e, data) => cb(data))
     },
     write: (sid: string, data: string) => ipcRenderer.invoke('connection:write', sid, data),
+    test: (deviceId: string) => ipcRenderer.invoke('connection:test', deviceId),
   },
   ai: {
     chat: (messages: unknown[], deviceIds?: string[], sessionId?: string) => ipcRenderer.invoke('ai:chat', messages, deviceIds, sessionId),

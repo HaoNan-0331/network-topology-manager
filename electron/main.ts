@@ -6,7 +6,7 @@ import { getOrCreateMasterKey } from './utils/keyManager'
 import { generateCaptcha, login, isFirstRun, initAdmin } from './services/auth'
 import { setDeviceMasterKey, listDevices, createDevice, updateDevice, deleteDevice, getDeviceById } from './services/device'
 import { setTopologyMasterKey, listTopologies, getTopologyById, createTopology, updateTopology, deleteTopology, exportTopology, importTopology } from './services/topology'
-import { setConnectionMasterKey, openTerminal, openWebSafe, writeToSession, writeByWebContentsId, disconnectSession } from './services/connection'
+import { setConnectionMasterKey, openTerminal, openWebSafe, writeToSession, writeByWebContentsId, disconnectSession, testDeviceConnection } from './services/connection'
 import { setAiMasterKey, chat, getAiConfigMasked, saveAiConfig, getCommandWhitelist, saveCommandWhitelist, getExecMode, setExecMode, confirmCommand, getAiLogs, getChatHistory, saveChatMessage as aiSaveChatMessage, clearChatHistory, createSession, listSessions, getSessionMessages, deleteSession, updateSessionTitle } from './services/ai'
 import { discoverTopology } from './services/discovery'
 import { getSystemLogs } from './services/systemLog'
@@ -75,6 +75,7 @@ app.whenReady().then(() => {
   ipcMain.handle('connection:openWeb', (_e, url) => openWebSafe(url))
   ipcMain.handle('connection:disconnect', (_e, sessionId) => disconnectSession(sessionId))
   ipcMain.handle('connection:write', (_e, sessionId, data) => writeToSession(sessionId, data))
+  ipcMain.handle('connection:test', (_e, deviceId) => testDeviceConnection(deviceId))
 
   // Terminal window IPC (from popup terminal windows)
   ipcMain.handle('terminal:write', (e, data) => writeByWebContentsId(e.sender.id, data))

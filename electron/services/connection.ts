@@ -264,3 +264,115 @@ export function disconnectSession(sessionId: string) {
   }
   sessions.delete(sessionId)
 }
+
+export function testDeviceConnection(deviceId: string): Promise<{ success: boolean; message: string }> {
+  const device = getDeviceById(deviceId) as DeviceInfo | null
+  if (!device) return Promise.resolve({ success: false, message: '设备不存在' })
+
+  if (device.connectionType === 'web') {
+    return testWebConnection(device.webUrl)
+  } else if (device.connectionType === 'telnet') {
+    return testTelnetConnection(device.ipAddress, device.port || 23)
+  } else {
+    return testSSHConnection(device)
+  }
+}
+
+function testSSHConnection(device: DeviceInfo): Promise<{ success: boolean; message: string }> {
+  return new Promise((resolve) => {
+    const client = new Client()
+    const timer = setTimeout(() => {
+      client.end()
+      resolve({ success: false, message: `连接超时 (${device.ipAddress}:${device.port || 22})` })
+    }, 10000)
+
+    client.on('ready', () => {
+      clearTimeout(timer)
+      client.end()
+      resolve({ success: true, message: `SSH 连接成功 (${device.ipAddress}:${device.port || 22})` })
+    })
+    client.on('error', (err: Error) => {
+      clearTimeout(timer)
+      const msg = err.message.includes('ECONNREFUSED') ? '连接被拒绝'
+        : err.message.includes('ENOTFOUND') ? '主机名无法解析'
+        : err.message.includes('ETIMEDOUT') ? '连接超时'
+        : err.message.includes('AUTH') || err.message.includes('All configured') ? '认证失败(用户名/密码/密钥错误)'
+        : err.message.includes('EHOSTUNREACH') ? '主机不可达'
+        : `连接失败: ${err.message}`
+      resolve({ success: false, message: msg })
+    })
+
+    const config: ConnectConfig = {
+      host: device.ipAddress,
+      port: device.port || 22,
+      username: device.username || 'root',
+      readyTimeout: 8000,
+      algorithms: {
+        kex: ['ecdh-sha2-nistp256', 'ecdh-sha2-nistp384', 'ecdh-sha2-nistp521', 'diffie-hellman-group-exchange-sha256', 'diffie-hellman-group14-sha256', 'diffie-hellman-group15-sha512', 'diffie-hellman-group16-sha512', 'diffie-hellman-group-exchange-sha1', 'diffie-hellman-group14-sha1', 'diffie-hellman-group1-sha1'],
+        cipher: ['aes128-gcm@openssh.com', 'aes256-gcm@openssh.com', 'aes128-ctr', 'aes192-ctr', 'aes256-ctr', 'aes128-cbc', 'aes192-cbc', 'aes256-cbc', '3des-cbc', 'blowfish-cbc'],
+        serverHostKey: ['ssh-rsa', 'rsa-sha2-256', 'rsa-sha2-512', 'ecdsa-sha2-nistp256', 'ecdsa-sha2-nistp384', 'ecdsa-sha2-nistp521', 'ssh-ed25519', 'ssh-dss'],
+      },
+    }
+    if (device.sshKeyContent) {
+      config.privateKey = Buffer.from(device.sshKeyContent)
+    } else if (device.sshKeyPath) {
+      config.privateKey = fs.readFileSync(device.sshKeyPath)
+    } else {
+      config.password = device.password
+    }
+    client.connect(config)
+  })
+}
+
+function testTelnetConnection(host: string, port: number): Promise<{ success: boolean; message: string }> {
+  return new Promise((resolve) => {
+    const socket = new net.Socket()
+    const timer = setTimeout(() => {
+      socket.destroy()
+      resolve({ success: false, message: `连接超时 (${host}:${port})` })
+    }, 10000)
+
+    socket.on('connect', () => {
+      clearTimeout(timer)
+      socket.destroy()
+      resolve({ success: true, message: `Telnet 连接成功 (${host}:${port})` })
+    })
+    socket.on('error', (err: Error) => {
+      clearTimeout(timer)
+      const msg = err.message.includes('ECONNREFUSED') ? '连接被拒绝'
+        : err.message.includes('ETIMEDOUT') ? '连接超时'
+        : err.message.includes('EHOSTUNREACH') ? '主机不可达'
+        : `连接失败: ${err.message}`
+      resolve({ success: false, message: msg })
+    })
+    socket.connect(port, host)
+  })
+}
+
+async function testWebConnection(url: string): Promise<{ success: boolean; message: string }> {
+  try {
+    if (!url) return { success: false, message: '未配置 Web URL' }
+    const parsed = new URL(url)
+    const port = parseInt(parsed.port) || (parsed.protocol === 'https:' ? 443 : 80)
+    // Test TCP connectivity only — skip SSL verification (devices use self-signed certs)
+    return await new Promise((resolve) => {
+      const socket = new net.Socket()
+      const timer = setTimeout(() => {
+        socket.destroy()
+        resolve({ success: false, message: `连接超时 (${parsed.hostname}:${port})` })
+      }, 10000)
+      socket.on('connect', () => {
+        clearTimeout(timer)
+        socket.destroy()
+        resolve({ success: true, message: `Web 端口可达 (${parsed.hostname}:${port})` })
+      })
+      socket.on('error', (err: Error) => {
+        clearTimeout(timer)
+        resolve({ success: false, message: `连接失败: ${err.message}` })
+      })
+      socket.connect(port, parsed.hostname)
+    })
+  } catch {
+    return { success: false, message: '无效的 URL' }
+  }
+}

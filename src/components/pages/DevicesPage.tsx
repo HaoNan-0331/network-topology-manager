@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Table, Button, Space, Popconfirm, message, Typography } from 'antd'
-import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
+import { PlusOutlined, EditOutlined, DeleteOutlined, ApiOutlined } from '@ant-design/icons'
 import DeviceForm from '../DeviceForm'
 import type { Device, CreateDeviceDTO } from '../../types/device'
 
@@ -15,6 +15,7 @@ export default function DevicesPage() {
   const [loading, setLoading] = useState(false)
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Device | null>(null)
+  const [testingId, setTestingId] = useState<string | null>(null)
 
   const load = async () => {
     setLoading(true)
@@ -43,6 +44,21 @@ export default function DevicesPage() {
     load()
   }
 
+  const handleTest = async (device: Device) => {
+    setTestingId(device.id)
+    try {
+      const result = await window.api.connection.test(device.id)
+      if (result.success) {
+        message.success(`${device.name}: ${result.message}`)
+      } else {
+        message.error(`${device.name}: ${result.message}`)
+      }
+    } catch (e: any) {
+      message.error(`${device.name}: 测试失败 - ${e.message}`)
+    }
+    setTestingId(null)
+  }
+
   return (
     <div style={{ padding: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
@@ -58,9 +74,10 @@ export default function DevicesPage() {
         { title: '连接方式', dataIndex: 'connectionType', key: 'connectionType', render: (v: string) => v?.toUpperCase() },
         { title: '操作', key: 'action', render: (_: unknown, r: Device) => (
           <Space>
-            <Button icon={<EditOutlined />} type="text" onClick={() => { setEditing(r); setFormOpen(true) }} />
+            <Button icon={<ApiOutlined />} type="text" loading={testingId === r.id} onClick={() => handleTest(r)} title="测试连接" />
+            <Button icon={<EditOutlined />} type="text" onClick={() => { setEditing(r); setFormOpen(true) }} title="编辑" />
             <Popconfirm title="删除设备将同时从拓扑中移除，确定删除？" onConfirm={() => handleDelete(r.id)}>
-              <Button icon={<DeleteOutlined />} type="text" danger />
+              <Button icon={<DeleteOutlined />} type="text" danger title="删除" />
             </Popconfirm>
           </Space>
         )},
