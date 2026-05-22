@@ -55,6 +55,57 @@ const api = {
     updateSessionTitle: (sessionId: string, title: string) => ipcRenderer.invoke('ai:updateSessionTitle', sessionId, title),
     getSystemLogs: (limit?: number) => ipcRenderer.invoke('ai:getSystemLogs', limit),
   },
+  arp: {
+    collectFromDevice: (deviceId: string) => ipcRenderer.invoke('arp:collectFromDevice', deviceId),
+    collectFromAll: () => ipcRenderer.invoke('arp:collectFromAll'),
+  },
+  network: {
+    getAll: () => ipcRenderer.invoke('network:getAll'),
+    getById: (id: number) => ipcRenderer.invoke('network:getById', id),
+    create: (data: unknown) => ipcRenderer.invoke('network:create', data),
+    update: (data: unknown) => ipcRenderer.invoke('network:update', data),
+    delete: (id: number) => ipcRenderer.invoke('network:delete', id),
+    autoDiscover: () => ipcRenderer.invoke('network:autoDiscover'),
+    getIPUsage: (networkId: number) => ipcRenderer.invoke('network:getIPUsage', networkId),
+    getIPDetails: (networkId: number, searchIp?: string, searchMac?: string, sortBy?: string, sortOrder?: string) =>
+      ipcRenderer.invoke('network:getIPDetails', networkId, searchIp, searchMac, sortBy, sortOrder),
+  },
+  anomaly: {
+    getChanges: (unacknowledgedOnly?: boolean, limit?: number) => ipcRenderer.invoke('anomaly:getChanges', unacknowledgedOnly, limit),
+    acknowledge: (id: number, notes?: string) => ipcRenderer.invoke('anomaly:acknowledge', id, notes),
+    acknowledgeAll: () => ipcRenderer.invoke('anomaly:acknowledgeAll'),
+    deleteChange: (id: number) => ipcRenderer.invoke('anomaly:deleteChange', id),
+    deleteChanges: (ids: number[]) => ipcRenderer.invoke('anomaly:deleteChanges', ids),
+    getStats: () => ipcRenderer.invoke('anomaly:getStats'),
+    getBindingHistory: (ip: string) => ipcRenderer.invoke('anomaly:getBindingHistory', ip),
+    getExcludedIPs: () => ipcRenderer.invoke('anomaly:getExcludedIPs'),
+    addExcludedIP: (data: unknown) => ipcRenderer.invoke('anomaly:addExcludedIP', data),
+    deleteExcludedIP: (id: number) => ipcRenderer.invoke('anomaly:deleteExcludedIP', id),
+  },
+  oui: {
+    getAll: () => ipcRenderer.invoke('oui:getAll'),
+    search: (keyword: string) => ipcRenderer.invoke('oui:search', keyword),
+    getById: (id: number) => ipcRenderer.invoke('oui:getById', id),
+    add: (data: unknown) => ipcRenderer.invoke('oui:add', data),
+    addBatch: (entries: unknown[]) => ipcRenderer.invoke('oui:addBatch', entries),
+    update: (data: unknown) => ipcRenderer.invoke('oui:update', data),
+    delete: (id: number) => ipcRenderer.invoke('oui:delete', id),
+    deleteBatch: (ids: number[]) => ipcRenderer.invoke('oui:deleteBatch', ids),
+    getVendor: (mac: string) => ipcRenderer.invoke('oui:getVendor', mac),
+    getAllVendors: () => ipcRenderer.invoke('oui:getAllVendors'),
+    getStats: () => ipcRenderer.invoke('oui:getStats'),
+  },
+  export: {
+    arpTable: () => ipcRenderer.invoke('export:arpTable'),
+    changes: (unacknowledgedOnly?: boolean) => ipcRenderer.invoke('export:changes', unacknowledgedOnly),
+    networkUsage: (networkId?: number) => ipcRenderer.invoke('export:networkUsage', networkId),
+  },
+  scheduler: {
+    getConfig: () => ipcRenderer.invoke('scheduler:getConfig'),
+    updateConfig: (data: unknown) => ipcRenderer.invoke('scheduler:updateConfig', data),
+    runNow: () => ipcRenderer.invoke('scheduler:runNow'),
+    getStatus: () => ipcRenderer.invoke('scheduler:getStatus'),
+  },
 }
 
 contextBridge.exposeInMainWorld('api', api)

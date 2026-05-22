@@ -21,6 +21,7 @@ if (!(window as any).api) {
   let adminInitialized = load<boolean>('adminInit', false)
 
   let currentUser: any = null
+  void currentUser
 
   ;(window as any).api = {
     auth: {

@@ -26,6 +26,8 @@ function rowToDevice(row: any): any {
     sshKeyPath: dec(row.ssh_key_path_enc),
     sshKeyContent: dec(row.ssh_key_content_enc),
     webUrl: dec(row.web_url_enc),
+    status: row.status || 'unknown',
+    lastChecked: row.last_checked || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }

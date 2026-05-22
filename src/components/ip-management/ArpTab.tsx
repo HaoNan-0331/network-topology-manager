@@ -1,0 +1,145 @@
+import { useState, useEffect } from 'react'
+import { Button, Table, Card, Collapse, Tag, message, Progress } from 'antd'
+import { ReloadOutlined, ExportOutlined, CheckOutlined } from '@ant-design/icons'
+
+interface ArpTabProps { api: any }
+
+export default function ArpTab({ api }: ArpTabProps) {
+  const [loading, setLoading] = useState(false)
+  const [results, setResults] = useState<any[]>([])
+  const [stats, setStats] = useState<any>(null)
+  const [devices, setDevices] = useState<any[]>([])
+  const [selectedDeviceIds, setSelectedDeviceIds] = useState<string[]>([])
+  const [selectOpen, setSelectOpen] = useState(false)
+
+  useEffect(() => {
+    api.device.list().then((list: any[]) => {
+      setDevices(list.filter((d: any) => d.connectionType === 'ssh' || d.connectionType === 'telnet'))
+    })
+  }, [])
+
+  const collectAll = async () => {
+    setLoading(true)
+    try {
+      const res = await api.arp.collectFromAll()
+      setResults(res.results || [])
+      setStats(res.stats || null)
+      message.success(`采集完成: ${res.results?.length || 0} 台设备, ${res.stats?.entries || 0} 条记录`)
+    } catch (e: any) {
+      message.error('采集失败: ' + e.message)
+    } finally { setLoading(false) }
+  }
+
+  const collectSelected = async () => {
+    if (selectedDeviceIds.length === 0) { message.warning('请先选择设备'); return }
+    setLoading(true)
+    setResults([])
+    setStats(null)
+    try {
+      const allResults: any[] = []
+      let totalEntries = 0, totalChanges = 0, totalDeprecated = 0
+      for (const deviceId of selectedDeviceIds) {
+        const result = await api.arp.collectFromDevice(deviceId)
+        allResults.push(result)
+        if (result.entries?.length) totalEntries += result.entries.length
+      }
+      setResults(allResults)
+      setStats({ entries: totalEntries, changes: totalChanges, deprecated: totalDeprecated })
+      message.success(`采集完成: ${allResults.length} 台设备, ${totalEntries} 条记录`)
+    } catch (e: any) {
+      message.error('采集失败: ' + e.message)
+    } finally { setLoading(false) }
+  }
+
+  const exportArp = async () => {
+    try {
+      const path = await api.export.arpTable()
+      if (path) message.success('导出成功: ' + path)
+    } catch (e: any) { message.error(e.message) }
+  }
+
+  const toggleDevice = (id: string) => {
+    setSelectedDeviceIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    )
+  }
+
+  const selectAll = () => setSelectedDeviceIds(devices.map((d: any) => d.id))
+  const clearSelection = () => setSelectedDeviceIds([])
+
+  const columns = [
+    { title: 'IP 地址', dataIndex: 'ip', key: 'ip' },
+    { title: 'MAC 地址', dataIndex: 'mac', key: 'mac' },
+    { title: 'VLAN', dataIndex: 'vlan', key: 'vlan' },
+    { title: '接口', dataIndex: 'interface', key: 'interface' },
+  ]
+
+  const deviceColumns = [
+    {
+      title: '', key: 'select', width: 40,
+      render: (_: any, record: any) => (
+        <input type="checkbox" checked={selectedDeviceIds.includes(record.id)}
+          onChange={() => toggleDevice(record.id)} />
+      ),
+    },
+    { title: '设备名称', dataIndex: 'name', key: 'name' },
+    { title: 'IP', dataIndex: 'ipAddress', key: 'ipAddress' },
+    {
+      title: '厂商', dataIndex: 'vendor', key: 'vendor',
+      render: (v: string) => v || '-'
+    },
+    {
+      title: '连接', dataIndex: 'connectionType', key: 'connectionType',
+      render: (v: string) => <Tag>{v?.toUpperCase()}</Tag>
+    },
+  ]
+
+  return (
+    <div>
+      <div style={{ marginBottom: 16, display: 'flex', gap: 8, alignItems: 'center' }}>
+        <Button type="primary" icon={<ReloadOutlined />} loading={loading} onClick={collectAll}>全部采集</Button>
+        <Button icon={<CheckOutlined />} loading={loading} onClick={collectSelected}
+          disabled={selectedDeviceIds.length === 0}>
+          采集选中 ({selectedDeviceIds.length})
+        </Button>
+        <Button onClick={() => setSelectOpen(!selectOpen)}>
+          {selectOpen ? '收起设备列表' : '选择设备'}
+        </Button>
+        <Button icon={<ExportOutlined />} onClick={exportArp} disabled={results.length === 0}>导出 ARP 表</Button>
+      </div>
+
+      {selectOpen && (
+        <Card size="small" title="设备列表" style={{ marginBottom: 16 }}
+          extra={<span><a onClick={selectAll}>全选</a> | <a onClick={clearSelection}>清空</a></span>}>
+          <Table dataSource={devices} columns={deviceColumns} rowKey="id" size="small"
+            pagination={false} />
+        </Card>
+      )}
+
+      {loading && <Progress percent={100} status="active" style={{ marginBottom: 16 }} />}
+
+      {stats && (
+        <Card size="small" style={{ marginBottom: 16 }}>
+          <span>设备: {results.length} | ARP条目: {stats.entries} | 异常变更: {stats.changes || 0} | 弃用IP: {stats.deprecated || 0}</span>
+        </Card>
+      )}
+
+      <Collapse items={results.map((r: any, idx: number) => ({
+        key: idx,
+        label: (
+          <span>
+            {r.deviceName} ({r.deviceIp})
+            {r.error ? <Tag color="red" style={{ marginLeft: 8 }}>失败</Tag> :
+              <Tag color="green" style={{ marginLeft: 8 }}>{r.entries?.length || 0} 条</Tag>}
+          </span>
+        ),
+        children: r.error ? (
+          <Tag color="red">{r.error}</Tag>
+        ) : (
+          <Table dataSource={r.entries || []} columns={columns}
+            rowKey={(row: any) => `${row.ip}-${row.mac}`} size="small" pagination={false} />
+        ),
+      }))} />
+    </div>
+  )
+}

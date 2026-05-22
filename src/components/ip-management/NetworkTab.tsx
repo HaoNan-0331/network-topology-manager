@@ -1,0 +1,188 @@
+import { useState, useEffect } from 'react'
+import { Button, Table, Card, Modal, Form, Input, Row, Col, Statistic, message, Popconfirm } from 'antd'
+import { PlusOutlined, SearchOutlined, ThunderboltOutlined, ExportOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons'
+
+interface NetworkTabProps { api: any }
+
+export default function NetworkTab({ api }: NetworkTabProps) {
+  const [segments, setSegments] = useState<any[]>([])
+  const [loading, setLoading] = useState(false)
+  const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [ipUsage, setIpUsage] = useState<any>(null)
+  const [ipDetails, setIpDetails] = useState<any[]>([])
+  const [searchIp, setSearchIp] = useState('')
+  const [searchMac, setSearchMac] = useState('')
+  const [modalOpen, setModalOpen] = useState(false)
+  const [editing, setEditing] = useState<any>(null)
+  const [form] = Form.useForm()
+
+  const loadSegments = async () => {
+    setLoading(true)
+    try { setSegments(await api.network.getAll()) } finally { setLoading(false) }
+  }
+
+  useEffect(() => { loadSegments() }, [])
+
+  const selectSegment = async (id: number) => {
+    setSelectedId(id)
+    try {
+      const [usage, details] = await Promise.all([
+        api.network.getIPUsage(id),
+        api.network.getIPDetails(id, searchIp, searchMac),
+      ])
+      setIpUsage(usage)
+      setIpDetails(details)
+    } catch (e: any) {
+      console.error('Failed to load segment details:', e)
+      message.error('加载网段详情失败: ' + e.message)
+    }
+  }
+
+  const searchIPs = async () => {
+    if (selectedId) {
+      setIpDetails(await api.network.getIPDetails(selectedId, searchIp, searchMac))
+    }
+  }
+
+  const autoDiscover = async () => {
+    try {
+      const discovered = await api.network.autoDiscover()
+      if (discovered.length > 0) {
+        message.success(`发现 ${discovered.length} 个新网段`)
+        loadSegments()
+      } else { message.info('未发现新网段') }
+    } catch (e: any) { message.error(e.message) }
+  }
+
+  const exportUsage = async () => {
+    try {
+      const path = await api.export.networkUsage(selectedId || undefined)
+      if (path) message.success('导出成功: ' + path)
+    } catch (e: any) { message.error(e.message) }
+  }
+
+  const openModal = (record?: any) => {
+    setEditing(record || null)
+    if (record) form.setFieldsValue(record)
+    else form.resetFields()
+    setModalOpen(true)
+  }
+
+  const saveSegment = async () => {
+    try {
+      const values = await form.validateFields()
+      if (editing) {
+        await api.network.update({ id: editing.id, ...values })
+        message.success('更新成功')
+      } else {
+        await api.network.create(values)
+        message.success('创建成功')
+      }
+      setModalOpen(false)
+      loadSegments()
+    } catch { /* validation failed */ }
+  }
+
+  const deleteSegment = async (id: number) => {
+    await api.network.delete(id)
+    if (selectedId === id) { setSelectedId(null); setIpUsage(null); setIpDetails([]) }
+    message.success('删除成功')
+    loadSegments()
+  }
+
+  const segColumns = [
+    { title: '名称', dataIndex: 'name', key: 'name' },
+    { title: '网段', dataIndex: 'network', key: 'network' },
+    { title: '掩码', dataIndex: 'mask', key: 'mask' },
+    { title: 'CIDR', dataIndex: 'cidr', key: 'cidr' },
+    { title: '网关', dataIndex: 'gateway', key: 'gateway' },
+    {
+      title: '来源', dataIndex: 'isAutoDiscovered', key: 'source',
+      render: (v: boolean) => v ? <span style={{ color: '#1890ff' }}>自动发现</span> : '手动添加'
+    },
+    {
+      title: '操作', key: 'actions',
+      render: (_: any, record: any) => (
+        <>
+          <Button type="link" size="small" onClick={() => selectSegment(record.id)}>查看</Button>
+          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => openModal(record)} />
+          <Popconfirm title="确定删除此网段?" onConfirm={() => deleteSegment(record.id)}>
+            <Button type="link" size="small" danger icon={<DeleteOutlined />} />
+          </Popconfirm>
+        </>
+      ),
+    },
+  ]
+
+  const ipColumns = [
+    { title: 'IP 地址', dataIndex: 'ip', key: 'ip' },
+    { title: 'MAC 地址', dataIndex: 'mac', key: 'mac' },
+    { title: '厂商', dataIndex: 'macVendor', key: 'macVendor' },
+    {
+      title: '状态', dataIndex: 'status', key: 'status',
+      render: (v: string) => <span style={{ color: v === 'used' ? '#52c41a' : '#999' }}>{v === 'used' ? '已使用' : '弃用'}</span>
+    },
+    { title: '接口', dataIndex: 'interface', key: 'interface' },
+    { title: '设备', dataIndex: 'deviceName', key: 'deviceName' },
+    { title: '最后发现', dataIndex: 'lastSeen', key: 'lastSeen' },
+  ]
+
+  return (
+    <div>
+      <div style={{ marginBottom: 16, display: 'flex', gap: 8 }}>
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>添加网段</Button>
+        <Button icon={<ThunderboltOutlined />} onClick={autoDiscover}>自动发现</Button>
+        <Button icon={<ExportOutlined />} onClick={exportUsage} disabled={!selectedId}>导出</Button>
+      </div>
+
+      <Row gutter={16}>
+        <Col span={10}>
+          <Table dataSource={segments} columns={segColumns} rowKey="id" size="small"
+            loading={loading} pagination={false}
+            onRow={(record) => ({ onClick: () => selectSegment(record.id), style: { cursor: 'pointer', background: selectedId === record.id ? '#e6f7ff' : undefined } })}
+          />
+        </Col>
+        <Col span={14}>
+          {ipUsage ? (
+            <>
+              <Row gutter={16} style={{ marginBottom: 16 }}>
+                <Col span={6}><Statistic title="总IP" value={ipUsage.total} /></Col>
+                <Col span={6}><Statistic title="已使用" value={ipUsage.used} valueStyle={{ color: '#52c41a' }} /></Col>
+                <Col span={6}><Statistic title="可用" value={ipUsage.available} valueStyle={{ color: '#1890ff' }} /></Col>
+                <Col span={6}><Statistic title="使用率" value={ipUsage.usagePercent} suffix="%" /></Col>
+              </Row>
+              <div style={{ marginBottom: 8, display: 'flex', gap: 8 }}>
+                <Input placeholder="搜索 IP" value={searchIp} onChange={e => setSearchIp(e.target.value)} onPressEnter={searchIPs} prefix={<SearchOutlined />} style={{ width: 200 }} />
+                <Input placeholder="搜索 MAC" value={searchMac} onChange={e => setSearchMac(e.target.value)} onPressEnter={searchIPs} style={{ width: 200 }} />
+                <Button onClick={searchIPs}>搜索</Button>
+              </div>
+              <Table dataSource={ipDetails} columns={ipColumns} rowKey="ip" size="small" pagination={{ pageSize: 20 }} />
+            </>
+          ) : (
+            <Card><span style={{ color: '#999' }}>请选择一个网段查看 IP 详情</span></Card>
+          )}
+        </Col>
+      </Row>
+
+      <Modal title={editing ? '编辑网段' : '添加网段'} open={modalOpen} onOk={saveSegment} onCancel={() => setModalOpen(false)}>
+        <Form form={form} layout="vertical">
+          <Form.Item name="name" label="名称" rules={[{ required: true }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="network" label="网络地址" rules={[{ required: true }]}>
+            <Input placeholder="如: 192.168.1.0" />
+          </Form.Item>
+          <Form.Item name="mask" label="子网掩码" rules={[{ required: true }]}>
+            <Input placeholder="如: 255.255.255.0" />
+          </Form.Item>
+          <Form.Item name="gateway" label="网关">
+            <Input placeholder="可选" />
+          </Form.Item>
+          <Form.Item name="description" label="描述">
+            <Input.TextArea />
+          </Form.Item>
+        </Form>
+      </Modal>
+    </div>
+  )
+}

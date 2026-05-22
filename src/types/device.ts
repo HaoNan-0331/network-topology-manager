@@ -17,6 +17,8 @@ export interface Device {
   sshKeyPath: string
   sshKeyContent: string
   webUrl: string
+  status: 'online' | 'offline' | 'unknown'
+  lastChecked: string | null
   createdAt: string
   updatedAt: string
 }

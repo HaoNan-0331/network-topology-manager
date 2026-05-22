@@ -1,10 +1,49 @@
 appId: com.network-topology.manager
 productName: 网络拓扑管理工具
-directories:
-  output: release
+
+# === asar 打包 ===
+asar: true
+asarUnpack:
+  - "**/*.node"
+  - "node_modules/better-sqlite3/**/*"
+  - "node_modules/ssh2/**/*"
+
+# === 文件过滤：只包含运行所需文件 ===
+files:
+  - dist-electron/**/*
+  - dist/**/*
+  - package.json
+  - "!**/*.{ts,tsx,map}"
+  - "!**/LICENSE*"
+  - "!**/{README,readme,CHANGELOG,changelog}*"
+  - "!**/{.eslintrc,.prettierrc,tsconfig}*"
+  - "!**/test{,s}/**"
+  - "!**/__test{,s}__/**"
+  - "!**/*.{spec,test}.{js,ts,tsx}"
+  - "!**/docs/**"
+  - "!scripts/**"
+  - "!public/**"
+  - "!src/**"
+  - "!electron/**"
+
+# === native 模块：自动重建 ===
+buildDependenciesFromSource: false
+npmRebuild: true
+
+# === Windows 配置 ===
 win:
-  target: nsis
-  icon: public/icon.png
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: build/icon.ico
+
+# === NSIS 安装程序配置 ===
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
+
+# === 精简 Electron 语言包 ===
+electronLanguages:
+  - zh-CN
+  - en-US

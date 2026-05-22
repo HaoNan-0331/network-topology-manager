@@ -10,6 +10,14 @@ import { setConnectionMasterKey, openTerminal, openWebSafe, writeToSession, writ
 import { setAiMasterKey, chat, getAiConfigMasked, saveAiConfig, getCommandWhitelist, saveCommandWhitelist, getExecMode, setExecMode, confirmCommand, getAiLogs, getChatHistory, saveChatMessage as aiSaveChatMessage, clearChatHistory, createSession, listSessions, getSessionMessages, deleteSession, updateSessionTitle } from './services/ai'
 import { discoverTopology } from './services/discovery'
 import { getSystemLogs } from './services/systemLog'
+import { setArpMasterKey } from './services/arpCollector'
+import { SchedulerService } from './services/schedulerService'
+import { registerArpIpc } from './ipc/arpIpc'
+import { registerNetworkIpc } from './ipc/networkIpc'
+import { registerAnomalyIpc } from './ipc/anomalyIpc'
+import { registerOuiIpc } from './ipc/ouiIpc'
+import { registerExportIpc } from './ipc/exportIpc'
+import { registerSchedulerIpc } from './ipc/schedulerIpc'
 
 let mainWindow: BrowserWindow | null = null
 let masterKey: string
@@ -44,8 +52,18 @@ app.whenReady().then(() => {
   setTopologyMasterKey(masterKey)
   setConnectionMasterKey(masterKey)
   setAiMasterKey(masterKey)
+  setArpMasterKey(masterKey)
   initDatabase()
   createTables()
+
+  // IP Management IPC
+  registerArpIpc()
+  registerNetworkIpc()
+  registerAnomalyIpc()
+  registerOuiIpc()
+  registerExportIpc()
+  registerSchedulerIpc()
+  SchedulerService.start()
 
   // Auth IPC
   ipcMain.handle('auth:getCaptcha', () => { const r = generateCaptcha(); return { svg: r.svg, key: r.key } })
